@@ -503,6 +503,45 @@ function filterUnfiled(response: Record<string, unknown>): Record<string, unknow
   return result;
 }
 
+export async function assignUnfiledItem(
+  client: TripItClient,
+  type: AssignableTripItObjectType,
+  id: string,
+  trip: string,
+): Promise<Record<string, unknown>> {
+  const initial = await tripItApiGet<Record<string, unknown>>(client, identifierEndpoint("get", type, id));
+  const initialItem = responseItem(initial, type);
+
+  if (!isUnfiled(initialItem)) {
+    throw new Error(`${type} item ${id} belongs to a trip and is not an unfiled item.`);
+  }
+
+  const tripResponse = await tripItApiGet<Record<string, unknown>>(client, identifierEndpoint("get", "trip", trip));
+  const tripItem = namedResponseItem(tripResponse, "Trip");
+
+  // Keep the replace operation in the source item's API version. A numeric
+  // unfiled ID must use v1 even when the destination was supplied as a UUID.
+  const target: AssignmentTarget = isUuid(id)
+    ? {
+        version: "v2",
+        objectUuid: id,
+        tripUuid: isUuid(trip) ? trip : responseUuid(tripItem, "destination trip"),
+      }
+    : {
+        version: "v1",
+        tripId: isUuid(trip)
+          ? await resolveV1TripId(client, trip, tripItem)
+          : numericId(trip, "destination trip ID"),
+      };
+  const objectIdentifier = target.version === "v2" ? target.objectUuid : numericId(id, `${type} item ID`);
+
+  // Replace is atomic: a successful response files the existing object in the
+  // trip, while a failed response leaves the unfiled source untouched.
+  return tripItApiPost<Record<string, unknown>>(client, identifierEndpoint("replace", type, objectIdentifier), {
+    [responseKeys[type]]: buildAssignmentItem(initialItem, type, target),
+  });
+}
+
 export function registerUnfiledTools(server: McpServer): void {
   server.registerTool(
     "tripit_unfiled_list",
@@ -626,47 +665,7 @@ export function registerUnfiledTools(server: McpServer): void {
       },
     },
     async ({ type, id, trip }) =>
-      jsonResult(
-        await withTripIt(async (client) => {
-          const initial = await tripItApiGet<Record<string, unknown>>(client, identifierEndpoint("get", type, id));
-          const initialItem = responseItem(initial, type);
-
-          if (!isUnfiled(initialItem)) {
-            throw new Error(`${type} item ${id} belongs to a trip and is not an unfiled item.`);
-          }
-
-          const tripResponse = await tripItApiGet<Record<string, unknown>>(client, identifierEndpoint("get", "trip", trip));
-          const tripItem = namedResponseItem(tripResponse, "Trip");
-
-          // Keep the replace operation in the source item's API version. A
-          // numeric unfiled ID must use v1 even when the destination was
-          // supplied as a UUID.
-          const target: AssignmentTarget = isUuid(id)
-            ? {
-                version: "v2",
-                objectUuid: id,
-                tripUuid: isUuid(trip) ? trip : responseUuid(tripItem, "destination trip"),
-              }
-            : {
-                version: "v1",
-                tripId: isUuid(trip)
-                  ? await resolveV1TripId(client, trip, tripItem)
-                  : numericId(trip, "destination trip ID"),
-              };
-          const objectIdentifier = target.version === "v2" ? target.objectUuid : numericId(id, `${type} item ID`);
-          const item = responseItem(initial, type);
-
-          if (!isUnfiled(item)) {
-            throw new Error(`${type} item ${id} belongs to a trip and is not an unfiled item.`);
-          }
-
-          // Replace is atomic: a successful response files the existing object in
-          // the trip, while a failed response leaves the unfiled source untouched.
-          return tripItApiPost<Record<string, unknown>>(client, identifierEndpoint("replace", type, objectIdentifier), {
-            [responseKeys[type]]: buildAssignmentItem(item, type, target),
-          });
-        }),
-      ),
+      jsonResult(await withTripIt((client) => assignUnfiledItem(client, type, id, trip))),
   );
 
   server.registerTool(
