@@ -1,6 +1,6 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import * as z from "zod/v4";
-import { tripItApiGet, tripItApiPost, withTripIt } from "../client";
+import { tripItApiGet, tripItApiPost, withTripIt, type TripItClient } from "../client";
 import { jsonResult } from "../results";
 
 const objectTypes = [
@@ -80,6 +80,11 @@ function namedResponseItem(response: Record<string, unknown>, key: string): Reco
   }
 
   return item;
+}
+
+function namedResponseItems(response: Record<string, unknown>, key: string): Record<string, unknown>[] {
+  const value = response[key];
+  return (Array.isArray(value) ? value : [value]).filter(isRecord);
 }
 
 function assertUnfiled(response: Record<string, unknown>, type: TripItObjectType, id: string): void {
@@ -410,6 +415,71 @@ function responseNumericId(item: Record<string, unknown>, description: string): 
   return numericId(relativeId, description);
 }
 
+function sameString(left: unknown, right: unknown): boolean {
+  return typeof left === "string" && typeof right === "string" && left === right;
+}
+
+function sameTripDetails(left: Record<string, unknown>, right: Record<string, unknown>): boolean {
+  return (
+    sameString(left.start_date, right.start_date) &&
+    sameString(left.end_date, right.end_date) &&
+    sameString(left.display_name, right.display_name) &&
+    (left.primary_location === undefined ||
+      right.primary_location === undefined ||
+      sameString(left.primary_location, right.primary_location))
+  );
+}
+
+async function listV1Trips(client: TripItClient): Promise<Record<string, unknown>[]> {
+  const trips: Record<string, unknown>[] = [];
+
+  for (const past of [false, true]) {
+    let pageNum = 1;
+    let maxPage = 1;
+
+    do {
+      const filters = ["traveler", "all"];
+      if (past) filters.push("past", "true");
+      const url = new URL(apiEndpoint("v1", `list/trip/${filters.join("/")}`));
+      url.searchParams.set("page_size", "100");
+      url.searchParams.set("page_num", String(pageNum));
+
+      const response = await tripItApiGet<Record<string, unknown>>(client, url.toString());
+      trips.push(...namedResponseItems(response, "Trip"));
+      const parsedMaxPage = Number.parseInt(String(response.max_page ?? "1"), 10);
+      maxPage = Number.isSafeInteger(parsedMaxPage) && parsedMaxPage > 0 ? parsedMaxPage : 1;
+      pageNum += 1;
+    } while (pageNum <= maxPage);
+  }
+
+  return trips;
+}
+
+export async function resolveV1TripId(
+  client: TripItClient,
+  tripUuid: string,
+  v2Trip: Record<string, unknown>,
+): Promise<string> {
+  const trips = await listV1Trips(client);
+  const uuidMatches = trips.filter((trip) => sameString(trip.uuid, tripUuid));
+  const publicGuidMatches =
+    typeof v2Trip.public_guid === "string"
+      ? trips.filter((trip) => sameString(trip.public_guid, v2Trip.public_guid))
+      : [];
+  const detailMatches = trips.filter((trip) => sameTripDetails(trip, v2Trip));
+  const matches = uuidMatches.length > 0 ? uuidMatches : publicGuidMatches.length > 0 ? publicGuidMatches : detailMatches;
+
+  if (matches.length !== 1) {
+    throw new Error(
+      matches.length === 0
+        ? `Could not resolve destination trip UUID ${tripUuid} to a v1 trip ID.`
+        : `Destination trip UUID ${tripUuid} matched multiple v1 trips. Use a numeric trip ID instead.`,
+    );
+  }
+
+  return responseNumericId(matches[0], "destination trip ID");
+}
+
 function filterUnfiled(response: Record<string, unknown>): Record<string, unknown> {
   const result = { ...response };
   let count = 0;
@@ -566,28 +636,25 @@ export function registerUnfiledTools(server: McpServer): void {
           }
 
           const tripResponse = await tripItApiGet<Record<string, unknown>>(client, identifierEndpoint("get", "trip", trip));
-          namedResponseItem(tripResponse, "Trip");
+          const tripItem = namedResponseItem(tripResponse, "Trip");
 
-          const target: AssignmentTarget = isUuid(trip)
+          // Keep the replace operation in the source item's API version. A
+          // numeric unfiled ID must use v1 even when the destination was
+          // supplied as a UUID.
+          const target: AssignmentTarget = isUuid(id)
             ? {
                 version: "v2",
-                objectUuid: isUuid(id) ? id : responseUuid(initialItem, `${type} item`),
-                tripUuid: trip,
+                objectUuid: id,
+                tripUuid: isUuid(trip) ? trip : responseUuid(tripItem, "destination trip"),
               }
             : {
                 version: "v1",
-                tripId: numericId(trip, "destination trip ID"),
+                tripId: isUuid(trip)
+                  ? await resolveV1TripId(client, trip, tripItem)
+                  : numericId(trip, "destination trip ID"),
               };
-          const objectIdentifier =
-            target.version === "v2"
-              ? target.objectUuid
-              : isUuid(id)
-                ? responseNumericId(initialItem, `${type} item ID`)
-                : numericId(id, `${type} item ID`);
-          const source = objectIdentifier === id
-            ? initial
-            : await tripItApiGet<Record<string, unknown>>(client, identifierEndpoint("get", type, objectIdentifier));
-          const item = responseItem(source, type);
+          const objectIdentifier = target.version === "v2" ? target.objectUuid : numericId(id, `${type} item ID`);
+          const item = responseItem(initial, type);
 
           if (!isUnfiled(item)) {
             throw new Error(`${type} item ${id} belongs to a trip and is not an unfiled item.`);
