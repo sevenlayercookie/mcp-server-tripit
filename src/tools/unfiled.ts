@@ -25,6 +25,134 @@ type AssignableTripItObjectType = Exclude<TripItObjectType, "weather">;
 
 const assignableObjectTypeSchema = objectTypeSchema.exclude(["weather"]);
 
+const dateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).describe("Date in YYYY-MM-DD format.");
+const timeSchema = z
+  .string()
+  .regex(/^([01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?$/)
+  .describe("Local time in HH:MM or HH:MM:SS format.");
+
+const personSchema = z.object({
+  firstName: z.string().optional().describe("First name."),
+  middleName: z.string().optional().describe("Middle name."),
+  lastName: z.string().optional().describe("Last name."),
+});
+
+const reservationDetailsShape = {
+  confirmation: z.string().optional().describe("Supplier confirmation or reservation number."),
+  bookingConfirmation: z.string().optional().describe("Booking-site confirmation number."),
+  supplierName: z.string().optional().describe("Supplier name when different from the display name."),
+  supplierPhone: z.string().optional().describe("Supplier phone number."),
+  supplierEmail: z.string().optional().describe("Supplier email address."),
+  supplierUrl: z.string().optional().describe("Supplier URL."),
+  bookingSiteName: z.string().optional().describe("Booking site or agency name."),
+  bookingSiteUrl: z.string().optional().describe("Booking site URL."),
+  bookingRate: z.string().optional().describe("Rate description."),
+  cost: z.string().optional().describe("Total cost, including currency when known."),
+  notes: z.string().optional().describe("Useful reservation details not represented by another field."),
+  restrictions: z.string().optional().describe("Cancellation or booking restrictions."),
+  purchased: z.boolean().optional().describe("Whether the reservation was purchased."),
+};
+
+const addressShape = {
+  address: z.string().min(1).describe("Full street or venue address."),
+  city: z.string().optional().describe("City."),
+  state: z.string().optional().describe("State or province."),
+  zip: z.string().optional().describe("Postal code."),
+  country: z.string().optional().describe("ISO country code such as US or CA."),
+};
+
+const optionalAddressShape = {
+  address: z.string().optional().describe("Full street or venue address."),
+  city: z.string().optional().describe("City."),
+  state: z.string().optional().describe("State or province."),
+  zip: z.string().optional().describe("Postal code."),
+  country: z.string().optional().describe("ISO country code such as US or CA."),
+};
+
+const conversionTargetSchema = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("lodging"),
+    name: z.string().min(1).describe("Property, campground, or lodging name."),
+    checkin: dateSchema.describe("Check-in date."),
+    checkout: dateSchema.describe("Check-out date."),
+    checkinTime: timeSchema.optional().describe("Check-in time. Defaults to 15:00."),
+    checkoutTime: timeSchema.optional().describe("Check-out time. Defaults to 11:00."),
+    timezone: z.string().min(1).describe("IANA timezone such as America/Edmonton."),
+    ...addressShape,
+    ...reservationDetailsShape,
+    guests: z.array(personSchema).optional().describe("Named guests."),
+    numberGuests: z.number().int().positive().optional().describe("Number of guests."),
+    numberRooms: z.number().int().positive().optional().describe("Number of rooms or sites."),
+    roomType: z.string().optional().describe("Room, unit, or campsite type."),
+  }),
+  z.object({
+    type: z.literal("activity"),
+    name: z.string().min(1).describe("Activity title."),
+    startDate: dateSchema.optional().describe("Start date, when known."),
+    startTime: timeSchema.optional().describe("Start time, when known."),
+    endDate: dateSchema.optional().describe("End date, when known."),
+    endTime: timeSchema.optional().describe("End time, when known."),
+    timezone: z.string().optional().describe("IANA timezone such as America/Denver."),
+    locationName: z.string().optional().describe("Venue or activity location name."),
+    ...optionalAddressShape,
+    ...reservationDetailsShape,
+    participants: z.array(personSchema).optional().describe("Named participants."),
+  }),
+  z.object({
+    type: z.literal("air"),
+    name: z.string().min(1).describe("Flight reservation title."),
+    airline: z.string().min(1).describe("Airline or supplier name."),
+    confirmation: z.string().optional().describe("Airline confirmation number."),
+    cost: z.string().optional().describe("Total cost, including currency when known."),
+    notes: z.string().optional().describe("Flight notes."),
+    purchased: z.boolean().optional().describe("Whether the flight was purchased."),
+    travelers: z.array(personSchema).optional().describe("Named travelers."),
+    segments: z
+      .array(
+        z.object({
+          departDate: dateSchema.describe("Departure date."),
+          departTime: timeSchema.describe("Departure time."),
+          departTimezone: z.string().min(1).describe("Departure IANA timezone."),
+          arriveDate: dateSchema.describe("Arrival date."),
+          arriveTime: timeSchema.describe("Arrival time."),
+          arriveTimezone: z.string().min(1).describe("Arrival IANA timezone."),
+          from: z.string().min(1).describe("Departure city."),
+          fromCountry: z.string().optional().describe("Departure country code."),
+          fromAirport: z.string().optional().describe("Departure airport code."),
+          to: z.string().min(1).describe("Arrival city."),
+          toCountry: z.string().optional().describe("Arrival country code."),
+          toAirport: z.string().optional().describe("Arrival airport code."),
+          airlineCode: z.string().min(1).describe("Marketing airline code."),
+          flightNumber: z.string().min(1).describe("Marketing flight number."),
+          aircraft: z.string().optional().describe("Aircraft type."),
+          serviceClass: z.string().optional().describe("Service class."),
+          seats: z.string().optional().describe("Seat assignment."),
+        }),
+      )
+      .min(1)
+      .describe("One or more flight segments."),
+  }),
+  z.object({
+    type: z.literal("transport"),
+    name: z.string().min(1).describe("Transport title."),
+    from: z.string().min(1).describe("Start address."),
+    fromName: z.string().optional().describe("Start location name."),
+    to: z.string().min(1).describe("End address."),
+    toName: z.string().optional().describe("End location name."),
+    departDate: dateSchema.describe("Departure date."),
+    departTime: timeSchema.describe("Departure time."),
+    arriveDate: dateSchema.describe("Arrival date."),
+    arriveTime: timeSchema.describe("Arrival time."),
+    timezone: z.string().min(1).describe("IANA timezone."),
+    carrier: z.string().optional().describe("Carrier name."),
+    confirmation: z.string().optional().describe("Confirmation number."),
+    vehicle: z.string().optional().describe("Vehicle description."),
+  }),
+]);
+
+type ConversionTarget = z.infer<typeof conversionTargetSchema>;
+type SourceDisposition = "keep_unfiled" | "delete" | "assign_to_trip";
+
 const responseKeys: Record<TripItObjectType, string> = {
   air: "AirObject",
   activity: "ActivityObject",
@@ -542,6 +670,309 @@ export async function assignUnfiledItem(
   });
 }
 
+function compactRecord(values: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(values).filter(([, value]) => value !== undefined && value !== null));
+}
+
+function normalizedTime(value: string): string {
+  return value.length === 5 ? `${value}:00` : value;
+}
+
+function conversionDateTime(date: string, time: string, timezone: string): Record<string, unknown> {
+  return { date, time: normalizedTime(time), timezone };
+}
+
+function optionalConversionDateTime(
+  date: string | undefined,
+  time: string | undefined,
+  timezone: string | undefined,
+): Record<string, unknown> | undefined {
+  if (!date && !time && !timezone) return undefined;
+  return compactRecord({ date, time: time ? normalizedTime(time) : undefined, timezone });
+}
+
+function conversionAddress(target: {
+  address?: string;
+  city?: string;
+  state?: string;
+  zip?: string;
+  country?: string;
+}): Record<string, unknown> {
+  return compactRecord({
+    address: target.address,
+    city: target.city,
+    state: target.state,
+    zip: target.zip,
+    country: target.country,
+  });
+}
+
+function conversionPeople(people: Array<{ firstName?: string; middleName?: string; lastName?: string }> | undefined) {
+  return people?.map((person) =>
+    compactRecord({
+      first_name: person.firstName,
+      middle_name: person.middleName,
+      last_name: person.lastName,
+    }),
+  );
+}
+
+function conversionReservationFields(target: {
+  bookingRate?: string;
+  bookingConfirmation?: string;
+  bookingSiteName?: string;
+  bookingSiteUrl?: string;
+  confirmation?: string;
+  supplierName?: string;
+  supplierPhone?: string;
+  supplierEmail?: string;
+  supplierUrl?: string;
+  purchased?: boolean;
+  notes?: string;
+  restrictions?: string;
+  cost?: string;
+}): Record<string, unknown> {
+  // Keep this in TripIt's ReservationObject XSD sequence.
+  return compactRecord({
+    booking_rate: target.bookingRate,
+    booking_site_conf_num: target.bookingConfirmation,
+    booking_site_name: target.bookingSiteName,
+    booking_site_url: target.bookingSiteUrl,
+    supplier_conf_num: target.confirmation,
+    supplier_email_address: target.supplierEmail,
+    supplier_name: target.supplierName,
+    supplier_phone: target.supplierPhone,
+    supplier_url: target.supplierUrl,
+    is_purchased: target.purchased,
+    notes: target.notes,
+    restrictions: target.restrictions,
+    total_cost: target.cost,
+  });
+}
+
+export function buildConversionItem(target: ConversionTarget, trip: string): Record<string, unknown> {
+  const association = isUuid(trip) ? { trip_uuid: trip } : { trip_id: numericId(trip, "destination trip ID") };
+
+  if (target.type === "lodging") {
+    return compactRecord({
+      ...association,
+      display_name: target.name,
+      ...conversionReservationFields({ ...target, supplierName: target.supplierName ?? target.name }),
+      StartDateTime: conversionDateTime(target.checkin, target.checkinTime ?? "15:00", target.timezone),
+      EndDateTime: conversionDateTime(target.checkout, target.checkoutTime ?? "11:00", target.timezone),
+      Address: conversionAddress(target),
+      Guest: conversionPeople(target.guests),
+      number_guests: target.numberGuests === undefined ? undefined : String(target.numberGuests),
+      number_rooms: target.numberRooms === undefined ? undefined : String(target.numberRooms),
+      room_type: target.roomType,
+    });
+  }
+
+  if (target.type === "activity") {
+    const address = conversionAddress(target);
+    return compactRecord({
+      ...association,
+      display_name: target.name,
+      ...conversionReservationFields(target),
+      StartDateTime: optionalConversionDateTime(target.startDate, target.startTime, target.timezone),
+      EndDateTime: optionalConversionDateTime(target.endDate, target.endTime, target.timezone),
+      Address: Object.keys(address).length > 0 ? address : undefined,
+      Participant: conversionPeople(target.participants),
+      location_name: target.locationName,
+    });
+  }
+
+  if (target.type === "air") {
+    return compactRecord({
+      ...association,
+      display_name: target.name,
+      supplier_conf_num: target.confirmation,
+      supplier_name: target.airline,
+      is_purchased: target.purchased,
+      notes: target.notes,
+      total_cost: target.cost,
+      Segment: target.segments.map((segment) =>
+        compactRecord({
+          StartDateTime: conversionDateTime(segment.departDate, segment.departTime, segment.departTimezone),
+          EndDateTime: conversionDateTime(segment.arriveDate, segment.arriveTime, segment.arriveTimezone),
+          start_airport_code: segment.fromAirport,
+          start_city_name: segment.from,
+          start_country_code: segment.fromCountry,
+          end_airport_code: segment.toAirport,
+          end_city_name: segment.to,
+          end_country_code: segment.toCountry,
+          marketing_airline: segment.airlineCode,
+          marketing_flight_number: segment.flightNumber,
+          aircraft: segment.aircraft,
+          seats: segment.seats,
+          service_class: segment.serviceClass,
+        }),
+      ),
+      Traveler: conversionPeople(target.travelers),
+    });
+  }
+
+  return compactRecord({
+    ...association,
+    display_name: target.name,
+    Segment: [
+      compactRecord({
+        StartDateTime: conversionDateTime(target.departDate, target.departTime, target.timezone),
+        EndDateTime: conversionDateTime(target.arriveDate, target.arriveTime, target.timezone),
+        StartLocationAddress: { address: target.from },
+        EndLocationAddress: { address: target.to },
+        start_location_name: target.fromName,
+        end_location_name: target.toName,
+        confirmation_num: target.confirmation,
+        carrier_name: target.carrier,
+        vehicle_description: target.vehicle,
+      }),
+    ],
+  });
+}
+
+function createdIdentifier(item: Record<string, unknown>, type: string): string {
+  const uuid = typeof item.uuid === "string" ? item.uuid.trim() : "";
+  if (uuid) return uuid;
+
+  const id = typeof item.id === "string" || typeof item.id === "number" ? String(item.id) : "";
+  if (id) return id;
+
+  throw new Error(`TripIt created the ${type} object but did not return an ID or UUID for verification.`);
+}
+
+function assertCreatedInTrip(
+  item: Record<string, unknown>,
+  trip: string,
+  destination: Record<string, unknown>,
+): void {
+  const expected = new Set(
+    [trip, destination.id, destination.uuid]
+      .filter((value): value is string | number => typeof value === "string" || typeof value === "number")
+      .map(String),
+  );
+  const actual = [item.trip_id, item.trip_uuid]
+    .filter((value): value is string | number => typeof value === "string" || typeof value === "number")
+    .map(String);
+
+  if (actual.length === 0 || !actual.some((identifier) => expected.has(identifier))) {
+    throw new Error("TripIt created the structured object but did not associate it with the requested destination trip.");
+  }
+}
+
+function errorText(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+export async function convertUnfiledItem(
+  client: TripItClient,
+  sourceType: TripItObjectType,
+  sourceId: string,
+  trip: string,
+  target: ConversionTarget,
+  sourceDisposition: SourceDisposition,
+): Promise<Record<string, unknown>> {
+  if (sourceType === "weather" && sourceDisposition === "assign_to_trip") {
+    throw new Error("Weather objects cannot be assigned to a trip; use keep_unfiled or delete.");
+  }
+
+  const sourceResponse = await tripItApiGet<Record<string, unknown>>(
+    client,
+    identifierEndpoint("get", sourceType, sourceId),
+  );
+  assertUnfiled(sourceResponse, sourceType, sourceId);
+
+  const tripResponse = await tripItApiGet<Record<string, unknown>>(client, identifierEndpoint("get", "trip", trip));
+  const destination = namedResponseItem(tripResponse, "Trip");
+  const destinationUuid = typeof destination.uuid === "string" && isUuid(destination.uuid) ? destination.uuid : undefined;
+  const createVersion = destinationUuid ? "v2" : "v1";
+  const createTrip = destinationUuid ?? numericId(trip, "destination trip ID");
+  const targetKey = responseKeys[target.type];
+  const createPath = createVersion === "v2" ? `create/${target.type}` : "create";
+  const creation = await tripItApiPost<Record<string, unknown>>(client, apiEndpoint(createVersion, createPath), {
+    [targetKey]: buildConversionItem(target, createTrip),
+  });
+  const created = namedResponseItem(creation, targetKey);
+  const identifier = createdIdentifier(created, target.type);
+  let verifiedItem: Record<string, unknown>;
+
+  try {
+    const verification = await tripItApiGet<Record<string, unknown>>(
+      client,
+      identifierEndpoint("get", target.type, identifier),
+    );
+    verifiedItem = responseItem(verification, target.type);
+    assertCreatedInTrip(verifiedItem, trip, destination);
+  } catch (error) {
+    return {
+      converted: true,
+      partial_success: true,
+      warning:
+        "TripIt returned an ID for the new structured object, but destination verification failed. The original source was kept unfiled. Do not retry conversion without checking for a duplicate.",
+      created: {
+        type: target.type,
+        id: created.id,
+        uuid: created.uuid,
+        object: created,
+        verification_error: errorText(error),
+      },
+      source: {
+        type: sourceType,
+        id: sourceId,
+        requested_disposition: sourceDisposition,
+        status: "kept_unfiled",
+      },
+    };
+  }
+
+  const result: Record<string, unknown> = {
+    converted: true,
+    created: {
+      type: target.type,
+      id: verifiedItem.id,
+      uuid: verifiedItem.uuid,
+      trip_id: verifiedItem.trip_id,
+      trip_uuid: verifiedItem.trip_uuid,
+      object: verifiedItem,
+    },
+    source: {
+      type: sourceType,
+      id: sourceId,
+      requested_disposition: sourceDisposition,
+      status: "kept_unfiled",
+    },
+  };
+
+  if (sourceDisposition === "keep_unfiled") return result;
+
+  try {
+    const dispositionResponse =
+      sourceDisposition === "delete"
+        ? await tripItApiGet<Record<string, unknown>>(client, identifierEndpoint("delete", sourceType, sourceId))
+        : await assignUnfiledItem(client, sourceType as AssignableTripItObjectType, sourceId, trip);
+    result.source = {
+      type: sourceType,
+      id: sourceId,
+      requested_disposition: sourceDisposition,
+      status: sourceDisposition === "delete" ? "deleted" : "assigned_to_trip",
+      response: dispositionResponse,
+    };
+  } catch (error) {
+    result.partial_success = true;
+    result.warning =
+      "The structured object was created and verified, but the original unfiled source could not be updated. Do not retry conversion without checking for a duplicate.";
+    result.source = {
+      type: sourceType,
+      id: sourceId,
+      requested_disposition: sourceDisposition,
+      status: "disposition_failed",
+      error: errorText(error),
+    };
+  }
+
+  return result;
+}
+
 export function registerUnfiledTools(server: McpServer): void {
   server.registerTool(
     "tripit_unfiled_list",
@@ -654,7 +1085,7 @@ export function registerUnfiledTools(server: McpServer): void {
     {
       title: "TripIt Unfiled Items Assign",
       description:
-        "Move an unfiled travel item into an existing trip using a complete writable replacement object. Weather objects cannot be assigned.",
+        "File an unfiled travel item in a trip without changing its object type or parsing raw text. Use tripit_unfiled_convert to create a structured object from parsed details.",
       inputSchema: {
         type: assignableObjectTypeSchema.describe("TripIt object type."),
         id: z.string().min(1).describe("Unfiled TripIt object ID or UUID."),
@@ -666,6 +1097,35 @@ export function registerUnfiledTools(server: McpServer): void {
     },
     async ({ type, id, trip }) =>
       jsonResult(await withTripIt((client) => assignUnfiledItem(client, type, id, trip))),
+  );
+
+  server.registerTool(
+    "tripit_unfiled_convert",
+    {
+      title: "TripIt Unfiled Items Convert",
+      description:
+        "Create a structured lodging, activity, flight, or transport object from an unfiled item's parsed details. First read the source with tripit_unfiled_get, extract every supported field, then call this tool. Creation and destination verification complete before the original source is kept, deleted, or filed in the trip.",
+      inputSchema: {
+        sourceType: objectTypeSchema.describe("Object type of the original unfiled item."),
+        sourceId: z.string().min(1).describe("ID or UUID of the original unfiled item."),
+        trip: z.string().min(1).describe("Destination TripIt trip ID or UUID."),
+        target: conversionTargetSchema.describe("Structured object type and parsed TripIt fields to create."),
+        sourceDisposition: z
+          .enum(["keep_unfiled", "delete", "assign_to_trip"])
+          .describe(
+            "What to do with the original only after successful conversion: keep it unfiled, delete it, or file the raw original in the destination trip.",
+          ),
+      },
+      annotations: {
+        destructiveHint: true,
+      },
+    },
+    async ({ sourceType, sourceId, trip, target, sourceDisposition }) =>
+      jsonResult(
+        await withTripIt((client) =>
+          convertUnfiledItem(client, sourceType, sourceId, trip, target, sourceDisposition),
+        ),
+      ),
   );
 
   server.registerTool(

@@ -86,5 +86,5 @@ Built on top of [`dvcrn/tripit-cli`](https://github.com/dvcrn/tripit-cli), this 
 - managing flights
 - managing transport segments
 - managing activities
-- listing, fetching, creating, replacing, assigning, and deleting unfiled travel items
+- listing, fetching, creating, replacing, assigning, converting, and deleting unfiled travel items
 - attaching and removing documents from supported TripIt objects

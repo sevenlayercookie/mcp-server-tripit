@@ -20,7 +20,8 @@
     "check": "tsc --noEmit",
     "dev": "bun run src/index.ts",
     "smoke": "bun run scripts/smoke-test.ts",
-    "test:unfiled-assign": "bun run scripts/test-unfiled-assign.ts"
+    "test:unfiled-assign": "bun run scripts/test-unfiled-assign.ts",
+    "test:unfiled-convert": "bun run scripts/test-unfiled-convert.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.18.1",
