@@ -696,6 +696,35 @@ export function buildAssignmentItem(
   return replacement;
 }
 
+export function buildUnfiledCreateItem(
+  data: Record<string, unknown>,
+  type: AssignableTripItObjectType,
+): Record<string, unknown> {
+  assertNoTrip(data);
+  const fields = [
+    ...baseObjectFields,
+    ...(reservationTypes.has(type) ? reservationFields : []),
+    ...typeFields[type],
+  ];
+  const item = copyFields(data, fields, (key, value) => sanitizeNested(key, value, type));
+
+  if (type in segmentFields && !item.Segment) {
+    throw new Error(`A ${type} object requires at least one complete segment.`);
+  }
+
+  return item;
+}
+
+export async function createUnfiledItem(
+  client: TripItClient,
+  type: AssignableTripItObjectType,
+  data: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  return tripItApiPost<Record<string, unknown>>(client, apiEndpoint("v1", "create"), {
+    [responseKeys[type]]: buildUnfiledCreateItem(data, type),
+  });
+}
+
 function numericId(value: unknown, description: string): string {
   const id = typeof value === "number" || typeof value === "string" ? String(value) : "";
   if (!/^[1-9]\d*$/.test(id)) {
@@ -1429,22 +1458,13 @@ export function registerUnfiledTools(server: McpServer): void {
     {
       title: "TripIt Unfiled Items Create",
       description:
-        "Create a travel item without a trip ID. TripIt may auto-file it when account auto-import is enabled and dates overlap a trip.",
+        "Create a writable travel item through TripIt's v1 create endpoint without a trip ID. The server wraps and orders fields for TripIt's XSD. TripIt may auto-file it when account auto-import is enabled and dates overlap a trip.",
       inputSchema: {
-        type: objectTypeSchema.describe("TripIt object type."),
+        type: assignableObjectTypeSchema.describe("Writable TripIt object type. Weather is read-only."),
         data: z.record(z.string(), z.unknown()).describe("Fields for the TripIt API object, excluding trip_id and trip_uuid."),
       },
     },
-    async ({ type, data }) => {
-      assertNoTrip(data);
-      return jsonResult(
-        await withTripIt((client) =>
-          tripItApiPost<Record<string, unknown>>(client, apiEndpoint("v2", `create/${type}`), {
-            [responseKeys[type]]: data,
-          }),
-        ),
-      );
-    },
+    async ({ type, data }) => jsonResult(await withTripIt((client) => createUnfiledItem(client, type, data))),
   );
 
   server.registerTool(
