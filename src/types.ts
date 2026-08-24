@@ -24,6 +24,11 @@ export const ALL_TOOL_NAMES = [
   "tripit_activities_delete",
   "tripit_documents_attach",
   "tripit_documents_remove",
+  "tripit_unfiled_list",
+  "tripit_unfiled_get",
+  "tripit_unfiled_create",
+  "tripit_unfiled_update",
+  "tripit_unfiled_delete",
 ] as const;
 
 export type TripItToolName = (typeof ALL_TOOL_NAMES)[number];

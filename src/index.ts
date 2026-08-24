@@ -6,6 +6,7 @@ import { registerFlightTools } from "./tools/flights";
 import { registerHotelTools } from "./tools/hotels";
 import { registerTransportTools } from "./tools/transport";
 import { registerTripTools } from "./tools/trips";
+import { registerUnfiledTools } from "./tools/unfiled";
 
 function createServer(): McpServer {
   const server = new McpServer({
@@ -19,6 +20,7 @@ function createServer(): McpServer {
   registerTransportTools(server);
   registerActivityTools(server);
   registerDocumentTools(server);
+  registerUnfiledTools(server);
 
   return server;
 }

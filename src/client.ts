@@ -1,4 +1,4 @@
-type TripItClient = {
+export type TripItClient = {
   authenticate(): Promise<string>;
   getAccessToken(): string;
   listTrips(pageSize?: number, pageNum?: number, past?: boolean): Promise<unknown>;
@@ -87,4 +87,41 @@ export async function createAuthenticatedTripItClient(): Promise<TripItClient> {
 export async function withTripIt<T>(callback: (client: TripItClient) => Promise<T>): Promise<T> {
   const client = await createAuthenticatedTripItClient();
   return callback(client);
+}
+
+export async function tripItApiGet<T>(client: TripItClient, url: string): Promise<T> {
+  const response = await fetch(url, {
+    headers: {
+      Authorization: `Bearer ${client.getAccessToken()}`,
+    },
+  });
+  const text = await response.text();
+
+  if (!response.ok) {
+    throw new Error(`TripIt API error (${response.status}): ${text}`);
+  }
+
+  return JSON.parse(text) as T;
+}
+
+export async function tripItApiPost<T>(
+  client: TripItClient,
+  url: string,
+  payload: Record<string, unknown>,
+): Promise<T> {
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${client.getAccessToken()}`,
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body: new URLSearchParams({ json: JSON.stringify(payload) }).toString(),
+  });
+  const text = await response.text();
+
+  if (!response.ok) {
+    throw new Error(`TripIt API error (${response.status}): ${text}`);
+  }
+
+  return JSON.parse(text) as T;
 }
