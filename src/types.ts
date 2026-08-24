@@ -28,6 +28,7 @@ export const ALL_TOOL_NAMES = [
   "tripit_unfiled_get",
   "tripit_unfiled_create",
   "tripit_unfiled_update",
+  "tripit_unfiled_assign",
   "tripit_unfiled_delete",
 ] as const;
 

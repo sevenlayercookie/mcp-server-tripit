@@ -79,6 +79,22 @@ function assertNoTrip(data: Record<string, unknown>): void {
   }
 }
 
+function assignToTrip(item: Record<string, unknown>, trip: string): Record<string, unknown> {
+  const replacement = { ...item };
+
+  for (const key of ["id", "uuid", "trip_id", "trip_uuid", "relative_url", "is_client_traveler", "is_traveler"]) {
+    delete replacement[key];
+  }
+
+  if (trip.includes("-")) {
+    replacement.trip_uuid = trip;
+  } else {
+    replacement.trip_id = trip;
+  }
+
+  return replacement;
+}
+
 function filterUnfiled(response: Record<string, unknown>): Record<string, unknown> {
   const result = { ...response };
   let count = 0;
@@ -207,6 +223,36 @@ export function registerUnfiledTools(server: McpServer): void {
         }),
       );
     },
+  );
+
+  server.registerTool(
+    "tripit_unfiled_assign",
+    {
+      title: "TripIt Unfiled Items Assign",
+      description: "Move an unfiled travel item into an existing trip while preserving its itinerary details.",
+      inputSchema: {
+        type: objectTypeSchema.describe("TripIt object type."),
+        id: z.string().min(1).describe("Unfiled TripIt object ID or UUID."),
+        trip: z.string().min(1).describe("Destination TripIt trip ID or UUID."),
+      },
+    },
+    async ({ type, id, trip }) =>
+      jsonResult(
+        await withTripIt(async (client) => {
+          const existing = await tripItApiGet<Record<string, unknown>>(client, identifierEndpoint("get", type, id));
+          const item = responseItem(existing, type);
+
+          if (!isUnfiled(item)) {
+            throw new Error(`${type} item ${id} belongs to a trip and is not an unfiled item.`);
+          }
+
+          await client.getTrip(trip);
+
+          return tripItApiPost<Record<string, unknown>>(client, identifierEndpoint("replace", type, id), {
+            [responseKeys[type]]: assignToTrip(item, trip),
+          });
+        }),
+      ),
   );
 
   server.registerTool(
