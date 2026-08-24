@@ -21,6 +21,9 @@ const objectTypes = [
 
 const objectTypeSchema = z.enum(objectTypes);
 type TripItObjectType = (typeof objectTypes)[number];
+type AssignableTripItObjectType = Exclude<TripItObjectType, "weather">;
+
+const assignableObjectTypeSchema = objectTypeSchema.exclude(["weather"]);
 
 const responseKeys: Record<TripItObjectType, string> = {
   air: "AirObject",
@@ -42,7 +45,11 @@ function apiEndpoint(version: "v1" | "v2", path: string): string {
   return `https://api.tripit.com/${version}/${path}/format/json`;
 }
 
-function identifierEndpoint(action: "get" | "replace" | "delete", type: TripItObjectType, id: string): string {
+function identifierEndpoint(
+  action: "get" | "replace" | "delete",
+  type: TripItObjectType | "trip",
+  id: string,
+): string {
   return id.includes("-")
     ? apiEndpoint("v2", `${action}/${type}/uuid/${encodeURIComponent(id)}`)
     : apiEndpoint("v1", `${action}/${type}/id/${encodeURIComponent(id)}`);
@@ -57,11 +64,15 @@ function isUnfiled(item: Record<string, unknown>): boolean {
 }
 
 function responseItem(response: Record<string, unknown>, type: TripItObjectType): Record<string, unknown> {
-  const value = response[responseKeys[type]];
+  return namedResponseItem(response, responseKeys[type]);
+}
+
+function namedResponseItem(response: Record<string, unknown>, key: string): Record<string, unknown> {
+  const value = response[key];
   const item = Array.isArray(value) ? value.find(isRecord) : value;
 
   if (!isRecord(item)) {
-    throw new Error(`TripIt did not return a ${responseKeys[type]} object.`);
+    throw new Error(`TripIt did not return a ${key} object.`);
   }
 
   return item;
@@ -79,20 +90,302 @@ function assertNoTrip(data: Record<string, unknown>): void {
   }
 }
 
-function assignToTrip(item: Record<string, unknown>, trip: string): Record<string, unknown> {
-  const replacement = { ...item };
+const baseObjectFields = ["display_name", "Image"] as const;
 
-  for (const key of ["id", "uuid", "trip_id", "trip_uuid", "relative_url", "is_client_traveler", "is_traveler"]) {
-    delete replacement[key];
+const reservationFields = [
+  "CancelUserAction",
+  "CancellationDateTime",
+  "booking_date",
+  "booking_rate",
+  "booking_site_conf_num",
+  "booking_site_name",
+  "booking_site_phone",
+  "booking_site_email_address",
+  "booking_site_url",
+  "record_locator",
+  "supplier_conf_num",
+  "supplier_contact",
+  "supplier_email_address",
+  "supplier_name",
+  "supplier_phone",
+  "supplier_url",
+  "is_purchased",
+  "notes",
+  "restrictions",
+  "total_cost",
+  "Agency",
+] as const;
+
+const typeFields: Record<AssignableTripItObjectType, readonly string[]> = {
+  air: ["Segment", "Traveler"],
+  activity: ["StartDateTime", "EndDateTime", "end_time", "Address", "Participant", "detail_type_code", "location_name"],
+  car: [
+    "EstimatedStartDateTime",
+    "EstimatedEndDateTime",
+    "StartDateTime",
+    "EndDateTime",
+    "StartLocationAddress",
+    "EndLocationAddress",
+    "ReservationHolder",
+    "Driver",
+    "start_location_hours",
+    "start_location_name",
+    "start_location_phone",
+    "end_location_hours",
+    "end_location_name",
+    "end_location_phone",
+    "car_description",
+    "car_type",
+    "mileage_charges",
+  ],
+  cruise: ["Segment", "Traveler", "cabin_number", "cabin_type", "dining", "ship_name"],
+  parking: [
+    "StartDateTime",
+    "EndDateTime",
+    "Address",
+    "location_hours",
+    "location_name",
+    "valet_ticket_num",
+    "location_phone",
+  ],
+  directions: ["DateTime", "StartAddress", "EndAddress", "detail_type_code"],
+  lodging: [
+    "EstimatedStartDateTime",
+    "EstimatedEndDateTime",
+    "StartDateTime",
+    "EndDateTime",
+    "Address",
+    "Guest",
+    "number_guests",
+    "number_rooms",
+    "room_type",
+    "bic_code",
+  ],
+  map: ["DateTime", "Address"],
+  note: ["DateTime", "Address", "detail_type_code", "source", "text", "url", "notes"],
+  rail: ["Segment", "Traveler"],
+  restaurant: [
+    "DateTime",
+    "Address",
+    "ReservationHolder",
+    "Attendee",
+    "cuisine",
+    "dress_code",
+    "hours",
+    "number_patrons",
+    "price_range",
+  ],
+  transport: ["Segment", "Traveler"],
+};
+
+const reservationTypes = new Set<AssignableTripItObjectType>([
+  "air",
+  "activity",
+  "car",
+  "cruise",
+  "parking",
+  "lodging",
+  "rail",
+  "restaurant",
+  "transport",
+]);
+
+const dateTimeFields = ["date", "time", "timezone", "is_timezone_manual", "preferred_timezone"] as const;
+const addressFields = ["address", "addr1", "addr2", "city", "state", "zip", "country"] as const;
+const travelerFields = [
+  "first_name",
+  "middle_name",
+  "last_name",
+  "frequent_traveler_num",
+  "frequent_traveler_supplier",
+  "meal_preference",
+  "seat_preference",
+  "ticket_num",
+] as const;
+const imageFields = ["caption", "url", "ImageData"] as const;
+const imageDataFields = ["content", "mime_type"] as const;
+const agencyFields = [
+  "agency_conf_num",
+  "agency_name",
+  "agency_client_name",
+  "agency_phone",
+  "agency_email_address",
+  "agency_url",
+  "agency_contact",
+  "partner_agency_id",
+] as const;
+const cancelUserActionFields = ["action_code", "action_at", "action_by"] as const;
+
+const segmentFields: Record<"air" | "cruise" | "rail" | "transport", readonly string[]> = {
+  air: [
+    "StartDateTime",
+    "EndDateTime",
+    "start_airport_code",
+    "start_city_name",
+    "start_country_code",
+    "start_gate",
+    "start_terminal",
+    "end_airport_code",
+    "end_city_name",
+    "end_country_code",
+    "end_gate",
+    "end_terminal",
+    "marketing_airline",
+    "marketing_flight_number",
+    "operating_airline",
+    "operating_flight_number",
+    "aircraft",
+    "distance",
+    "duration",
+    "entertainment",
+    "meal",
+    "notes",
+    "ontime_perc",
+    "seats",
+    "service_class",
+    "stops",
+    "baggage_claim",
+    "check_in_url",
+    "mobile_check_in_url",
+    "refund_info_url",
+    "mobile_refund_info_url",
+    "change_reservation_url",
+    "mobile_change_reservation_url",
+    "customer_support_url",
+    "mobile_customer_support_url",
+    "general_fees_url",
+    "web_home_url",
+    "mobile_home_url",
+  ],
+  cruise: ["StartDateTime", "EndDateTime", "LocationAddress", "location_name", "detail_type_code"],
+  rail: [
+    "StartDateTime",
+    "EndDateTime",
+    "StartStationAddress",
+    "EndStationAddress",
+    "start_station_name",
+    "end_station_name",
+    "carrier_name",
+    "coach_number",
+    "confirmation_num",
+    "seats",
+    "service_class",
+    "train_number",
+    "train_type",
+  ],
+  transport: [
+    "StartDateTime",
+    "EndDateTime",
+    "StartLocationAddress",
+    "EndLocationAddress",
+    "start_location_name",
+    "end_location_name",
+    "detail_type_code",
+    "carrier_name",
+    "confirmation_num",
+    "number_passengers",
+    "vehicle_description",
+  ],
+};
+
+function copyFields(
+  source: Record<string, unknown>,
+  fields: readonly string[],
+  transform: (key: string, value: unknown) => unknown = (_key, value) => value,
+): Record<string, unknown> {
+  const result: Record<string, unknown> = {};
+
+  for (const key of fields) {
+    const value = source[key];
+    if (value === undefined || value === null) continue;
+
+    const transformed = transform(key, value);
+    if (transformed !== undefined) result[key] = transformed;
   }
 
-  if (trip.includes("-")) {
-    replacement.trip_uuid = trip;
-  } else {
-    replacement.trip_id = trip;
+  return result;
+}
+
+function sanitizeRecord(value: unknown, fields: readonly string[]): Record<string, unknown> | undefined {
+  return isRecord(value) ? copyFields(value, fields) : undefined;
+}
+
+function sanitizeRepeated(
+  value: unknown,
+  sanitizer: (item: Record<string, unknown>) => Record<string, unknown>,
+): Record<string, unknown>[] | undefined {
+  const values = Array.isArray(value) ? value : [value];
+  const records = values.filter(isRecord).map(sanitizer);
+  return records.length > 0 ? records : undefined;
+}
+
+function sanitizeNested(key: string, value: unknown, type: AssignableTripItObjectType): unknown {
+  if (key.endsWith("DateTime") || key === "DateTime") return sanitizeRecord(value, dateTimeFields);
+  if (key.includes("Address")) return sanitizeRecord(value, addressFields);
+  if (key === "Agency") return sanitizeRecord(value, agencyFields);
+  if (key === "CancelUserAction") return sanitizeRecord(value, cancelUserActionFields);
+  if (key === "Image") {
+    return sanitizeRepeated(value, (image) =>
+      copyFields(image, imageFields, (imageKey, imageValue) =>
+        imageKey === "ImageData" ? sanitizeRecord(imageValue, imageDataFields) : imageValue,
+      ),
+    );
+  }
+  if (["Traveler", "Guest", "Driver", "Attendee", "Participant"].includes(key)) {
+    return sanitizeRepeated(value, (traveler) => copyFields(traveler, travelerFields));
+  }
+  if (key === "ReservationHolder") return sanitizeRecord(value, travelerFields);
+  if (key === "Segment" && type in segmentFields) {
+    const fields = segmentFields[type as keyof typeof segmentFields];
+    return sanitizeRepeated(value, (segment) =>
+      copyFields(segment, fields, (nestedKey, nestedValue) => sanitizeNested(nestedKey, nestedValue, type)),
+    );
+  }
+
+  return isRecord(value) || Array.isArray(value) ? undefined : value;
+}
+
+export function buildAssignmentItem(
+  item: Record<string, unknown>,
+  type: AssignableTripItObjectType,
+  tripId: string,
+): Record<string, unknown> {
+  // TripIt's object XSD uses a sequence. Build in schema order instead of cloning
+  // the response, which also prevents response-only and undocumented fields from
+  // being sent back to replace.
+  const fields = [
+    ...baseObjectFields,
+    ...(reservationTypes.has(type) ? reservationFields : []),
+    ...typeFields[type],
+  ];
+  const replacement: Record<string, unknown> = { trip_id: tripId };
+  Object.assign(replacement, copyFields(item, fields, (key, value) => sanitizeNested(key, value, type)));
+
+  if (type in segmentFields && !replacement.Segment) {
+    throw new Error(`TripIt did not return the complete ${type} segments required for assignment.`);
   }
 
   return replacement;
+}
+
+function numericId(value: unknown, description: string): string {
+  const id = typeof value === "number" || typeof value === "string" ? String(value) : "";
+  if (!/^[1-9]\d*$/.test(id)) {
+    throw new Error(`TripIt did not return the numeric ${description} required for assignment.`);
+  }
+
+  return id;
+}
+
+function responseNumericId(item: Record<string, unknown>, description: string): string {
+  const directId = typeof item.id === "number" || typeof item.id === "string" ? String(item.id) : "";
+  if (/^[1-9]\d*$/.test(directId)) return directId;
+
+  // v2 responses identify objects by UUID, but their UI-relative URL retains
+  // the numeric ID needed by v1 replace.
+  const relativeUrl = typeof item.relative_url === "string" ? item.relative_url : "";
+  const relativeId = relativeUrl.match(/\/id\/([1-9]\d*)(?:[/?#]|$)/)?.[1];
+  return numericId(relativeId, description);
 }
 
 function filterUnfiled(response: Record<string, unknown>): Record<string, unknown> {
@@ -229,27 +522,44 @@ export function registerUnfiledTools(server: McpServer): void {
     "tripit_unfiled_assign",
     {
       title: "TripIt Unfiled Items Assign",
-      description: "Move an unfiled travel item into an existing trip while preserving its itinerary details.",
+      description:
+        "Move an unfiled travel item into an existing trip using a complete writable replacement object. Weather objects cannot be assigned.",
       inputSchema: {
-        type: objectTypeSchema.describe("TripIt object type."),
+        type: assignableObjectTypeSchema.describe("TripIt object type."),
         id: z.string().min(1).describe("Unfiled TripIt object ID or UUID."),
         trip: z.string().min(1).describe("Destination TripIt trip ID or UUID."),
+      },
+      annotations: {
+        idempotentHint: true,
       },
     },
     async ({ type, id, trip }) =>
       jsonResult(
         await withTripIt(async (client) => {
-          const existing = await tripItApiGet<Record<string, unknown>>(client, identifierEndpoint("get", type, id));
-          const item = responseItem(existing, type);
+          const initial = await tripItApiGet<Record<string, unknown>>(client, identifierEndpoint("get", type, id));
+          const initialItem = responseItem(initial, type);
+
+          if (!isUnfiled(initialItem)) {
+            throw new Error(`${type} item ${id} belongs to a trip and is not an unfiled item.`);
+          }
+
+          const objectId = responseNumericId(initialItem, `${type} item ID`);
+          const source = id.includes("-")
+            ? await tripItApiGet<Record<string, unknown>>(client, identifierEndpoint("get", type, objectId))
+            : initial;
+          const item = responseItem(source, type);
 
           if (!isUnfiled(item)) {
             throw new Error(`${type} item ${id} belongs to a trip and is not an unfiled item.`);
           }
 
-          await client.getTrip(trip);
+          const tripResponse = await tripItApiGet<Record<string, unknown>>(client, identifierEndpoint("get", "trip", trip));
+          const tripId = responseNumericId(namedResponseItem(tripResponse, "Trip"), "destination trip ID");
 
-          return tripItApiPost<Record<string, unknown>>(client, identifierEndpoint("replace", type, id), {
-            [responseKeys[type]]: assignToTrip(item, trip),
+          // Replace is atomic: a successful response files the existing object in
+          // the trip, while a failed response leaves the unfiled source untouched.
+          return tripItApiPost<Record<string, unknown>>(client, identifierEndpoint("replace", type, objectId), {
+            [responseKeys[type]]: buildAssignmentItem(item, type, tripId),
           });
         }),
       ),
