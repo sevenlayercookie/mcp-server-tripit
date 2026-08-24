@@ -45,12 +45,16 @@ function apiEndpoint(version: "v1" | "v2", path: string): string {
   return `https://api.tripit.com/${version}/${path}/format/json`;
 }
 
+function isUuid(id: string): boolean {
+  return id.includes("-");
+}
+
 function identifierEndpoint(
   action: "get" | "replace" | "delete",
   type: TripItObjectType | "trip",
   id: string,
 ): string {
-  return id.includes("-")
+  return isUuid(id)
     ? apiEndpoint("v2", `${action}/${type}/uuid/${encodeURIComponent(id)}`)
     : apiEndpoint("v1", `${action}/${type}/id/${encodeURIComponent(id)}`);
 }
@@ -212,7 +216,6 @@ const agencyFields = [
   "agency_email_address",
   "agency_url",
   "agency_contact",
-  "partner_agency_id",
 ] as const;
 const cancelUserActionFields = ["action_code", "action_at", "action_by"] as const;
 
@@ -345,10 +348,14 @@ function sanitizeNested(key: string, value: unknown, type: AssignableTripItObjec
   return isRecord(value) || Array.isArray(value) ? undefined : value;
 }
 
+type AssignmentTarget =
+  | { version: "v1"; tripId: string }
+  | { version: "v2"; objectUuid: string; tripUuid: string };
+
 export function buildAssignmentItem(
   item: Record<string, unknown>,
   type: AssignableTripItObjectType,
-  tripId: string,
+  target: AssignmentTarget,
 ): Record<string, unknown> {
   // TripIt's object XSD uses a sequence. Build in schema order instead of cloning
   // the response, which also prevents response-only and undocumented fields from
@@ -358,7 +365,13 @@ export function buildAssignmentItem(
     ...(reservationTypes.has(type) ? reservationFields : []),
     ...typeFields[type],
   ];
-  const replacement: Record<string, unknown> = { trip_id: tripId };
+  const replacement: Record<string, unknown> = {};
+  if (target.version === "v2") {
+    replacement.uuid = target.objectUuid;
+    replacement.trip_uuid = target.tripUuid;
+  } else {
+    replacement.trip_id = target.tripId;
+  }
   Object.assign(replacement, copyFields(item, fields, (key, value) => sanitizeNested(key, value, type)));
 
   if (type in segmentFields && !replacement.Segment) {
@@ -375,6 +388,15 @@ function numericId(value: unknown, description: string): string {
   }
 
   return id;
+}
+
+function responseUuid(item: Record<string, unknown>, description: string): string {
+  const uuid = typeof item.uuid === "string" ? item.uuid.trim() : "";
+  if (!isUuid(uuid)) {
+    throw new Error(`TripIt did not return the ${description} UUID required for a v2 assignment.`);
+  }
+
+  return uuid;
 }
 
 function responseNumericId(item: Record<string, unknown>, description: string): string {
@@ -543,23 +565,38 @@ export function registerUnfiledTools(server: McpServer): void {
             throw new Error(`${type} item ${id} belongs to a trip and is not an unfiled item.`);
           }
 
-          const objectId = responseNumericId(initialItem, `${type} item ID`);
-          const source = id.includes("-")
-            ? await tripItApiGet<Record<string, unknown>>(client, identifierEndpoint("get", type, objectId))
-            : initial;
+          const tripResponse = await tripItApiGet<Record<string, unknown>>(client, identifierEndpoint("get", "trip", trip));
+          namedResponseItem(tripResponse, "Trip");
+
+          const target: AssignmentTarget = isUuid(trip)
+            ? {
+                version: "v2",
+                objectUuid: isUuid(id) ? id : responseUuid(initialItem, `${type} item`),
+                tripUuid: trip,
+              }
+            : {
+                version: "v1",
+                tripId: numericId(trip, "destination trip ID"),
+              };
+          const objectIdentifier =
+            target.version === "v2"
+              ? target.objectUuid
+              : isUuid(id)
+                ? responseNumericId(initialItem, `${type} item ID`)
+                : numericId(id, `${type} item ID`);
+          const source = objectIdentifier === id
+            ? initial
+            : await tripItApiGet<Record<string, unknown>>(client, identifierEndpoint("get", type, objectIdentifier));
           const item = responseItem(source, type);
 
           if (!isUnfiled(item)) {
             throw new Error(`${type} item ${id} belongs to a trip and is not an unfiled item.`);
           }
 
-          const tripResponse = await tripItApiGet<Record<string, unknown>>(client, identifierEndpoint("get", "trip", trip));
-          const tripId = responseNumericId(namedResponseItem(tripResponse, "Trip"), "destination trip ID");
-
           // Replace is atomic: a successful response files the existing object in
           // the trip, while a failed response leaves the unfiled source untouched.
-          return tripItApiPost<Record<string, unknown>>(client, identifierEndpoint("replace", type, objectId), {
-            [responseKeys[type]]: buildAssignmentItem(item, type, tripId),
+          return tripItApiPost<Record<string, unknown>>(client, identifierEndpoint("replace", type, objectIdentifier), {
+            [responseKeys[type]]: buildAssignmentItem(item, type, target),
           });
         }),
       ),
