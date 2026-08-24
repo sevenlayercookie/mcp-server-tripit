@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
 import type { TripItClient } from "../src/client";
 import { buildConversionItem, convertUnfiledItem } from "../src/tools/unfiled";
+import "./test-unfiled-convert-types";
 
 const tripUuid = "0f133c42-eded-9000-0001-000016f7ad8c";
-const lodgingUuid = "11111111-1111-9000-0001-111111111111";
-const activityUuid = "22222222-2222-9000-0001-222222222222";
+const tripId = "385330572";
+const lodgingId = "7000000001";
+const activityId = "7000000002";
 const events: string[] = [];
 const posts: Array<{ url: string; body: Record<string, Record<string, unknown>> }> = [];
 const originalFetch = globalThis.fetch;
@@ -21,17 +23,19 @@ globalThis.fetch = (async (input, init = {}) => {
     >;
     posts.push({ url, body });
 
-    if (url.includes("/v2/create/lodging/")) {
-      return new Response(
-        JSON.stringify({ LodgingObject: { uuid: lodgingUuid, trip_uuid: tripUuid } }),
-        { status: 200 },
-      );
-    }
-    if (url.includes("/v2/create/activity/")) {
-      return new Response(
-        JSON.stringify({ ActivityObject: { uuid: activityUuid, trip_uuid: tripUuid } }),
-        { status: 200 },
-      );
+    if (url.includes("/v1/create/")) {
+      if (body.LodgingObject) {
+        return new Response(
+          JSON.stringify({ LodgingObject: { id: lodgingId, trip_id: tripId } }),
+          { status: 200 },
+        );
+      }
+      if (body.ActivityObject) {
+        return new Response(
+          JSON.stringify({ ActivityObject: { id: activityId, trip_id: tripId } }),
+          { status: 200 },
+        );
+      }
     }
   }
 
@@ -56,22 +60,26 @@ globalThis.fetch = (async (input, init = {}) => {
   if (url.includes(`/v2/get/trip/uuid/${tripUuid}/`)) {
     return new Response(JSON.stringify({ Trip: { uuid: tripUuid, display_name: "Calgary" } }), { status: 200 });
   }
-  if (url.includes(`/v2/get/lodging/uuid/${lodgingUuid}/`)) {
+  if (url.includes("/v1/list/trip/traveler/all/")) {
+    const trips = url.includes("/past/true/") ? [] : [{ id: tripId, uuid: tripUuid, display_name: "Calgary" }];
+    return new Response(JSON.stringify({ Trip: trips, page_num: "1", max_page: "1" }), { status: 200 });
+  }
+  if (url.includes(`/v1/get/lodging/id/${lodgingId}/`)) {
     return new Response(
       JSON.stringify({
         LodgingObject: {
-          uuid: lodgingUuid,
-          trip_uuid: tripUuid,
+          id: lodgingId,
+          trip_id: tripId,
           display_name: "Tunnel Mountain Village 1",
         },
       }),
       { status: 200 },
     );
   }
-  if (url.includes(`/v2/get/activity/uuid/${activityUuid}/`)) {
+  if (url.includes(`/v1/get/activity/id/${activityId}/`)) {
     return new Response(
       JSON.stringify({
-        ActivityObject: { uuid: activityUuid, trip_uuid: tripUuid, display_name: "Registration" },
+        ActivityObject: { id: activityId, trip_id: tripId, display_name: "Registration" },
       }),
       { status: 200 },
     );
@@ -118,7 +126,7 @@ try {
   assert.equal((lodging.source as Record<string, unknown>).status, "deleted");
   const lodgingPayload = posts[0].body.LodgingObject;
   assert.deepEqual(lodgingPayload, {
-    trip_uuid: tripUuid,
+    trip_id: tripId,
     display_name: "Tunnel Mountain Village 1",
     booking_site_name: "Parks Canada Reservation Service",
     supplier_conf_num: "INPC26-55623486B1",
@@ -138,7 +146,7 @@ try {
     room_type: "Campsite B40",
   });
 
-  const verifyIndex = events.findIndex((event) => event.includes(`/v2/get/lodging/uuid/${lodgingUuid}/`));
+  const verifyIndex = events.findIndex((event) => event.includes(`/v1/get/lodging/id/${lodgingId}/`));
   const deleteIndex = events.findIndex((event) => event.includes("/v1/delete/note/id/5538951469/"));
   assert.ok(verifyIndex >= 0 && deleteIndex > verifyIndex, "source deletion must happen after target verification");
 

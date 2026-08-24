@@ -87,4 +87,5 @@ Built on top of [`dvcrn/tripit-cli`](https://github.com/dvcrn/tripit-cli), this 
 - managing transport segments
 - managing activities
 - listing, fetching, creating, replacing, assigning, converting, and deleting unfiled travel items
+- converting raw unfiled items into typed air, activity, car, parking, cruise, directions, lodging, map, note, rail, restaurant, or transport objects
 - attaching and removing documents from supported TripIt objects
