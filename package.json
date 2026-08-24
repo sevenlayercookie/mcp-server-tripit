@@ -3,6 +3,9 @@
   "version": "0.2.4",
   "description": "Expose the TripIt API as an MCP server",
   "type": "module",
+  "engines": {
+    "node": ">=20.15.1"
+  },
   "bin": {
     "mcp-server-tripit": "./dist/index.js"
   },
@@ -12,6 +15,7 @@
   ],
   "scripts": {
     "build": "tsup",
+    "prepare": "npm run build",
     "prepublishOnly": "bun run build",
     "check": "tsc --noEmit",
     "dev": "bun run src/index.ts",
@@ -19,9 +23,15 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.18.1",
-    "tripit": "^0.1.7",
+    "tripit": "0.1.8",
     "zod": "^3.25.76"
   },
+  "overrides": {
+    "cheerio": "1.0.0"
+  },
+  "bundleDependencies": [
+    "tripit"
+  ],
   "devDependencies": {
     "@types/bun": "latest",
     "@types/node": "^24.3.0",
