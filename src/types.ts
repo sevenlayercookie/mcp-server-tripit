@@ -24,6 +24,7 @@ export const ALL_TOOL_NAMES = [
   "tripit_delete_activity",
   "tripit_attach_document",
   "tripit_remove_document",
+  "tripit_create_trip_item",
   "tripit_list_unfiled_items",
   "tripit_get_unfiled_item",
   "tripit_create_item_without_trip",

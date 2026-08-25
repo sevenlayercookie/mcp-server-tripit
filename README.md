@@ -86,6 +86,7 @@ Built on top of [`dvcrn/tripit-cli`](https://github.com/dvcrn/tripit-cli), this 
 - managing flights
 - managing transport segments
 - managing activities
+- creating any writable typed itinerary item directly in a trip
 - listing, fetching, creating, replacing, assigning, converting, and deleting unfiled travel items
 - converting raw unfiled items into typed air, activity, car, parking, cruise, directions, lodging, map, note, rail, restaurant, or transport objects
 - attaching and removing documents from supported TripIt objects
@@ -107,3 +108,5 @@ Every tool returns the same structured envelope:
 Failures set `isError: true` and return `ok: false` with a stable error code, message, retryability flag, and optional upstream HTTP status. Do not retry writes unless `error.retryable` is true. Conversion results with `partial_success` must be inspected before retrying to avoid duplicates.
 
 Create-without-trip, replacement, and conversion accept typed discriminated item schemas for air, activity, car, parking, cruise, directions, lodging, map, note, rail, restaurant, and transport. Weather remains read-only.
+
+`tripit_create_trip_item` accepts a destination trip ID or UUID plus the same typed item schema. It resolves UUID destinations to TripIt's numeric v1 `trip_id`, creates the item directly in that trip, and verifies the resulting association before reporting success.

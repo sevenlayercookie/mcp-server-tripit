@@ -699,6 +699,72 @@ export async function createItemWithoutTrip(
   });
 }
 
+export async function createTripItem(
+  client: TripItClient,
+  trip: string,
+  item: WritableItemInput,
+): Promise<Record<string, unknown>> {
+  const tripResponse = await tripItApiGet<Record<string, unknown>>(client, identifierEndpoint("get", "trip", trip));
+  const destination = namedResponseItem(tripResponse, "Trip");
+  const createTripId = isUuid(trip)
+    ? await resolveV1TripId(client, trip, destination)
+    : numericId(trip, "destination trip ID");
+  const objectKey = responseKeys[item.type];
+  const creation = await tripItApiPost<Record<string, unknown>>(client, apiEndpoint("v1", "create"), {
+    [objectKey]: buildConversionItem(item, createTripId),
+  });
+  const created = namedResponseItem(creation, objectKey);
+  let identifier: string;
+
+  try {
+    identifier = createdIdentifier(created, item.type);
+  } catch (error) {
+    return {
+      partial_success: true,
+      warning:
+        "TripIt accepted the create request but did not return an identifier for verification. Inspect the destination trip before retrying to avoid a duplicate.",
+      created: {
+        type: item.type,
+        object: created,
+        verification_error: errorText(error),
+      },
+    };
+  }
+
+  try {
+    const verification = await tripItApiGet<Record<string, unknown>>(
+      client,
+      identifierEndpoint("get", item.type, identifier),
+    );
+    const verifiedItem = responseItem(verification, item.type);
+    assertCreatedInTrip(verifiedItem, trip, { ...destination, id: createTripId });
+
+    return {
+      created: {
+        type: item.type,
+        id: verifiedItem.id,
+        uuid: verifiedItem.uuid,
+        trip_id: verifiedItem.trip_id,
+        trip_uuid: verifiedItem.trip_uuid,
+        object: verifiedItem,
+      },
+    };
+  } catch (error) {
+    return {
+      partial_success: true,
+      warning:
+        "TripIt returned an identifier for the new item, but destination verification failed. Inspect the destination trip before retrying to avoid a duplicate.",
+      created: {
+        type: item.type,
+        id: created.id,
+        uuid: created.uuid,
+        object: created,
+        verification_error: errorText(error),
+      },
+    };
+  }
+}
+
 function numericId(value: unknown, description: string): string {
   const id = typeof value === "number" || typeof value === "string" ? String(value) : "";
   if (!/^[1-9]\d*$/.test(id)) {
@@ -1231,11 +1297,11 @@ export function buildConversionItem(target: WritableItemInput, trip?: string): R
 }
 
 function createdIdentifier(item: Record<string, unknown>, type: string): string {
-  const uuid = typeof item.uuid === "string" ? item.uuid.trim() : "";
-  if (uuid) return uuid;
-
   const id = typeof item.id === "string" || typeof item.id === "number" ? String(item.id) : "";
   if (id) return id;
+
+  const uuid = typeof item.uuid === "string" ? item.uuid.trim() : "";
+  if (uuid) return uuid;
 
   throw new Error(`TripIt created the ${type} object but did not return an ID or UUID for verification.`);
 }

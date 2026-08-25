@@ -83,6 +83,11 @@ function textContent(text: string): CallToolResult["content"] {
   return [{ type: "text", text }];
 }
 
+function operationIsSafeToRetry(operation: string): boolean {
+  if (!operation.startsWith("tripit_")) return true;
+  return /^tripit_(list|get|update|replace)_/.test(operation);
+}
+
 export function successResult(
   operation: string,
   data: Record<string, unknown>,
@@ -114,7 +119,8 @@ export function errorResult(
           : message.startsWith("Missing required environment variable")
             ? "AUTHENTICATION_REQUIRED"
             : "TOOL_EXECUTION_ERROR";
-  const retryable = status === 408 || status === 429 || (status !== undefined && status >= 500);
+  const transient = status === 408 || status === 429 || (status !== undefined && status >= 500);
+  const retryable = transient && operationIsSafeToRetry(operation);
   const envelope: NormalizedToolOutput = {
     ok: false,
     operation,

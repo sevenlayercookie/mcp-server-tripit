@@ -87,6 +87,11 @@ async function testNormalizedEnvelopes(): Promise<void> {
   });
   assert.equal(normalizedToolOutputSchema.safeParse(failure.structuredContent).success, true);
 
+  const unsafeCreateRetry = errorResult("tripit_create_trip_item", { message: "Unavailable", status: 503 });
+  assert.equal((unsafeCreateRetry.structuredContent?.error as Record<string, unknown>).retryable, false);
+  const safeReadRetry = errorResult("tripit_list_trips", { message: "Unavailable", status: 503 });
+  assert.equal((safeReadRetry.structuredContent?.error as Record<string, unknown>).retryable, true);
+
   const embedded = await toolResult("test_embedded", async () => ({
     Error: { code: "400", message: "Payload rejected" },
     Warning: { code: "W1", message: "Check the date" },

@@ -34,6 +34,7 @@ export const TOOL_CONFORMANCE_MATRIX: readonly ToolConformanceCase[] = [
   { name: "tripit_delete_activity", behavior: "delete", directPrompt: "Delete activity 123.", invalidArgs: {} },
   { name: "tripit_attach_document", behavior: "write", directPrompt: "Attach this PDF to TripIt item 123.", invalidArgs: {} },
   { name: "tripit_remove_document", behavior: "delete", directPrompt: "Remove a document from TripIt item 123.", invalidArgs: {} },
+  { name: "tripit_create_trip_item", behavior: "create", directPrompt: "Create this car rental directly in my Calgary trip.", invalidArgs: {} },
   { name: "tripit_list_unfiled_items", behavior: "read", directPrompt: "List my unfiled TripIt items.", invalidArgs: { pageSize: 0 } },
   { name: "tripit_get_unfiled_item", behavior: "read", directPrompt: "Get unfiled note 123.", invalidArgs: {} },
   { name: "tripit_create_item_without_trip", behavior: "create", directPrompt: "Create this note without choosing a trip.", invalidArgs: {} },
