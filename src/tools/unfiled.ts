@@ -694,7 +694,7 @@ export async function createItemWithoutTrip(
   client: TripItClient,
   item: WritableItemInput,
 ): Promise<Record<string, unknown>> {
-  return tripItApiPost<Record<string, unknown>>(client, apiEndpoint("v1", "create"), {
+  return tripItApiPost<Record<string, unknown>>(client, apiEndpoint("v2", `create/${item.type}`), {
     [responseKeys[item.type]]: buildConversionItem(item),
   });
 }
@@ -706,11 +706,9 @@ export async function createTripItem(
 ): Promise<Record<string, unknown>> {
   const tripResponse = await tripItApiGet<Record<string, unknown>>(client, identifierEndpoint("get", "trip", trip));
   const destination = namedResponseItem(tripResponse, "Trip");
-  const createTripId = isUuid(trip)
-    ? await resolveV1TripId(client, trip, destination)
-    : numericId(trip, "destination trip ID");
+  const createTripId = isUuid(trip) ? trip : numericId(trip, "destination trip ID");
   const objectKey = responseKeys[item.type];
-  const creation = await tripItApiPost<Record<string, unknown>>(client, apiEndpoint("v1", "create"), {
+  const creation = await tripItApiPost<Record<string, unknown>>(client, apiEndpoint("v2", `create/${item.type}`), {
     [objectKey]: buildConversionItem(item, createTripId),
   });
   const created = namedResponseItem(creation, objectKey);
@@ -740,27 +738,27 @@ export async function createTripItem(
     assertCreatedInTrip(verifiedItem, trip, { ...destination, id: createTripId });
 
     return {
-      created: {
+      created: compactRecord({
         type: item.type,
         id: verifiedItem.id,
         uuid: verifiedItem.uuid,
         trip_id: verifiedItem.trip_id,
         trip_uuid: verifiedItem.trip_uuid,
         object: verifiedItem,
-      },
+      }),
     };
   } catch (error) {
     return {
       partial_success: true,
       warning:
         "TripIt returned an identifier for the new item, but destination verification failed. Inspect the destination trip before retrying to avoid a duplicate.",
-      created: {
+      created: compactRecord({
         type: item.type,
         id: created.id,
         uuid: created.uuid,
         object: created,
         verification_error: errorText(error),
-      },
+      }),
     };
   }
 }
@@ -1349,11 +1347,9 @@ export async function convertUnfiledItem(
 
   const tripResponse = await tripItApiGet<Record<string, unknown>>(client, identifierEndpoint("get", "trip", trip));
   const destination = namedResponseItem(tripResponse, "Trip");
-  const createTripId = isUuid(trip)
-    ? await resolveV1TripId(client, trip, destination)
-    : numericId(trip, "destination trip ID");
+  const createTripId = isUuid(trip) ? trip : numericId(trip, "destination trip ID");
   const targetKey = responseKeys[target.type];
-  const creation = await tripItApiPost<Record<string, unknown>>(client, apiEndpoint("v1", "create"), {
+  const creation = await tripItApiPost<Record<string, unknown>>(client, apiEndpoint("v2", `create/${target.type}`), {
     [targetKey]: buildConversionItem(target, createTripId),
   });
   const created = namedResponseItem(creation, targetKey);
@@ -1391,14 +1387,14 @@ export async function convertUnfiledItem(
 
   const result: Record<string, unknown> = {
     converted: true,
-    created: {
+    created: compactRecord({
       type: target.type,
       id: verifiedItem.id,
       uuid: verifiedItem.uuid,
       trip_id: verifiedItem.trip_id,
       trip_uuid: verifiedItem.trip_uuid,
       object: verifiedItem,
-    },
+    }),
     source: {
       type: sourceType,
       id: sourceId,

@@ -20,6 +20,7 @@
     "check": "tsc --noEmit",
     "dev": "bun run src/index.ts",
     "smoke": "bun run scripts/smoke-test.ts",
+    "test:live": "bun run build && bun run scripts/test-live-tools.ts",
     "test:unfiled-assign": "bun run scripts/test-unfiled-assign.ts",
     "test:unfiled-convert": "bun run scripts/test-unfiled-convert.ts",
     "test:unfiled-create": "bun run scripts/test-unfiled-create.ts",
@@ -33,7 +34,8 @@
     "zod": "^3.25.76"
   },
   "overrides": {
-    "cheerio": "1.0.0"
+    "cheerio": "1.0.0",
+    "zod": "$zod"
   },
   "bundleDependencies": [
     "tripit"

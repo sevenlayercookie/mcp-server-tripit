@@ -109,4 +109,6 @@ Failures set `isError: true` and return `ok: false` with a stable error code, me
 
 Create-without-trip, replacement, and conversion accept typed discriminated item schemas for air, activity, car, parking, cruise, directions, lodging, map, note, rail, restaurant, and transport. Weather remains read-only.
 
-`tripit_create_trip_item` accepts a destination trip ID or UUID plus the same typed item schema. It resolves UUID destinations to TripIt's numeric v1 `trip_id`, creates the item directly in that trip, and verifies the resulting association before reporting success.
+`tripit_create_trip_item` accepts a destination trip ID or UUID plus the same typed item schema. Direct, unfiled, and conversion creates use TripIt's typed v2 endpoints, preserve UUID trip associations, and verify the resulting association before reporting success.
+
+Run `bun run test:live` with the TripIt credentials loaded to exercise every registered tool through MCP. The test creates isolated temporary objects and a trip, removes them, and verifies that the trip no longer appears afterward.

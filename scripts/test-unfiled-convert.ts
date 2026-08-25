@@ -5,8 +5,8 @@ import "./test-unfiled-convert-types";
 
 const tripUuid = "0f133c42-eded-9000-0001-000016f7ad8c";
 const tripId = "385330572";
-const lodgingId = "7000000001";
-const activityId = "7000000002";
+const lodgingId = "11111111-2222-4333-8444-555555555551";
+const activityId = "11111111-2222-4333-8444-555555555552";
 const events: string[] = [];
 const posts: Array<{ url: string; body: Record<string, Record<string, unknown>> }> = [];
 const originalFetch = globalThis.fetch;
@@ -23,16 +23,16 @@ globalThis.fetch = (async (input, init = {}) => {
     >;
     posts.push({ url, body });
 
-    if (url.includes("/v1/create/")) {
+    if (url.includes("/v2/create/")) {
       if (body.LodgingObject) {
         return new Response(
-          JSON.stringify({ LodgingObject: { id: lodgingId, trip_id: tripId } }),
+          JSON.stringify({ LodgingObject: { uuid: lodgingId, trip_uuid: tripUuid } }),
           { status: 200 },
         );
       }
       if (body.ActivityObject) {
         return new Response(
-          JSON.stringify({ ActivityObject: { id: activityId, trip_id: tripId } }),
+          JSON.stringify({ ActivityObject: { uuid: activityId, trip_uuid: tripUuid } }),
           { status: 200 },
         );
       }
@@ -64,22 +64,22 @@ globalThis.fetch = (async (input, init = {}) => {
     const trips = url.includes("/past/true/") ? [] : [{ id: tripId, uuid: tripUuid, display_name: "Calgary" }];
     return new Response(JSON.stringify({ Trip: trips, page_num: "1", max_page: "1" }), { status: 200 });
   }
-  if (url.includes(`/v1/get/lodging/id/${lodgingId}/`)) {
+  if (url.includes(`/v2/get/lodging/uuid/${lodgingId}/`)) {
     return new Response(
       JSON.stringify({
         LodgingObject: {
-          id: lodgingId,
-          trip_id: tripId,
+          uuid: lodgingId,
+          trip_uuid: tripUuid,
           display_name: "Tunnel Mountain Village 1",
         },
       }),
       { status: 200 },
     );
   }
-  if (url.includes(`/v1/get/activity/id/${activityId}/`)) {
+  if (url.includes(`/v2/get/activity/uuid/${activityId}/`)) {
     return new Response(
       JSON.stringify({
-        ActivityObject: { id: activityId, trip_id: tripId, display_name: "Registration" },
+        ActivityObject: { uuid: activityId, trip_uuid: tripUuid, display_name: "Registration" },
       }),
       { status: 200 },
     );
@@ -126,7 +126,7 @@ try {
   assert.equal((lodging.source as Record<string, unknown>).status, "deleted");
   const lodgingPayload = posts[0].body.LodgingObject;
   assert.deepEqual(lodgingPayload, {
-    trip_id: tripId,
+    trip_uuid: tripUuid,
     display_name: "Tunnel Mountain Village 1",
     booking_site_name: "Parks Canada Reservation Service",
     supplier_conf_num: "INPC26-55623486B1",
@@ -146,7 +146,7 @@ try {
     room_type: "Campsite B40",
   });
 
-  const verifyIndex = events.findIndex((event) => event.includes(`/v1/get/lodging/id/${lodgingId}/`));
+  const verifyIndex = events.findIndex((event) => event.includes(`/v2/get/lodging/uuid/${lodgingId}/`));
   const deleteIndex = events.findIndex((event) => event.includes("/v1/delete/note/id/5538951469/"));
   assert.ok(verifyIndex >= 0 && deleteIndex > verifyIndex, "source deletion must happen after target verification");
 

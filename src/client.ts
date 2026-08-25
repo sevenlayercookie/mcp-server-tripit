@@ -56,6 +56,67 @@ export class TripItApiError extends Error {
   }
 }
 
+const errorDescriptionKeys = ["error_description", "description", "error_message", "message", "text"];
+
+function normalizedErrorDetail(value: string): string | undefined {
+  const detail = value.replace(/\s+/g, " ").trim();
+  if (!detail) return undefined;
+  return detail.length <= 1_000 ? detail : `${detail.slice(0, 997)}...`;
+}
+
+function jsonErrorDetail(value: unknown): string | undefined {
+  if (!value || typeof value !== "object") return undefined;
+
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const detail = jsonErrorDetail(item);
+      if (detail) return detail;
+    }
+    return undefined;
+  }
+
+  const record = value as Record<string, unknown>;
+  for (const key of errorDescriptionKeys) {
+    const candidate = record[key];
+    if (typeof candidate === "string") {
+      const detail = normalizedErrorDetail(candidate);
+      if (detail) return detail;
+    }
+  }
+
+  for (const nested of Object.values(record)) {
+    const detail = jsonErrorDetail(nested);
+    if (detail) return detail;
+  }
+  return undefined;
+}
+
+function upstreamErrorDetail(text: string): string | undefined {
+  try {
+    const detail = jsonErrorDetail(JSON.parse(text));
+    if (detail) return detail;
+  } catch {
+    // TripIt sometimes returns XML or plain text for HTTP errors, even on JSON endpoints.
+  }
+
+  for (const tag of errorDescriptionKeys) {
+    const match = text.match(new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`, "i"));
+    if (match?.[1]) {
+      const detail = normalizedErrorDetail(match[1].replace(/<[^>]+>/g, " "));
+      if (detail) return detail;
+    }
+  }
+
+  if (!/<(?:html|body|head)\b/i.test(text)) return normalizedErrorDetail(text.replace(/<[^>]+>/g, " "));
+  return undefined;
+}
+
+function apiError(status: number, text: string): TripItApiError {
+  const detail = upstreamErrorDetail(text);
+  const suffix = detail ? `: ${detail}` : ".";
+  return new TripItApiError(status, `TripIt API request failed with status ${status}${suffix}`);
+}
+
 async function loadTripItConstructor(): Promise<TripItConstructor> {
   const module = (await import("tripit")) as unknown as {
     TripIt?: TripItConstructor;
@@ -110,7 +171,7 @@ export async function tripItApiGet<T>(client: TripItClient, url: string): Promis
   const text = await response.text();
 
   if (!response.ok) {
-    throw new TripItApiError(response.status, `TripIt API request failed with status ${response.status}.`);
+    throw apiError(response.status, text);
   }
 
   try {
@@ -136,7 +197,7 @@ export async function tripItApiPost<T>(
   const text = await response.text();
 
   if (!response.ok) {
-    throw new TripItApiError(response.status, `TripIt API request failed with status ${response.status}.`);
+    throw apiError(response.status, text);
   }
 
   try {

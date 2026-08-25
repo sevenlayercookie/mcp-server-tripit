@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import type { TripItClient } from "../src/client";
+import { tripItApiPost, type TripItClient } from "../src/client";
 import { createTripItem, type WritableItemInput } from "../src/tools/unfiled";
 
 const tripId = "2468";
@@ -75,12 +75,12 @@ const items: WritableItemInput[] = [
 const posts: Array<{ key: string; object: Record<string, unknown> }> = [];
 const originalFetch = globalThis.fetch;
 let omitCreatedIdentifier = false;
+let postFailure: Response | undefined;
 
 globalThis.fetch = (async (input, init = {}) => {
   const url = String(input);
 
   if (init.method === "POST") {
-    assert.equal(url, "https://api.tripit.com/v1/create/format/json");
     const body = JSON.parse(new URLSearchParams(String(init.body)).get("json") ?? "") as Record<
       string,
       Record<string, unknown>
@@ -89,8 +89,16 @@ globalThis.fetch = (async (input, init = {}) => {
     assert.ok(key);
     const object = body[key];
     assert.ok(object);
+    const type = Object.entries(objectKeys).find(([, objectKey]) => objectKey === key)?.[0];
+    assert.ok(type);
+    assert.equal(url, `https://api.tripit.com/v2/create/${type}/format/json`);
     posts.push({ key, object });
-    const created = omitCreatedIdentifier ? { trip_id: tripId } : { id: String(1000 + posts.length), trip_id: tripId };
+    if (postFailure) return postFailure;
+    const created = omitCreatedIdentifier
+      ? { trip_id: tripId }
+      : object.trip_uuid
+        ? { uuid: "11111111-2222-4333-8444-555555555555", trip_uuid: object.trip_uuid }
+        : { id: String(1000 + posts.length), trip_id: tripId };
     return new Response(JSON.stringify({ [key]: created }), {
       status: 200,
     });
@@ -105,6 +113,14 @@ globalThis.fetch = (async (input, init = {}) => {
   if (url.includes("/v1/list/trip/")) {
     const trips = url.includes("/past/true") ? [] : [{ id: tripId, uuid: tripUuid, display_name: "Calgary" }];
     return new Response(JSON.stringify({ Trip: trips, max_page: 1 }), { status: 200 });
+  }
+
+  const uuidMatch = url.match(/\/v2\/get\/([^/]+)\/uuid\/([^/]+)\//);
+  if (uuidMatch) {
+    const [, type, uuid] = uuidMatch;
+    const key = objectKeys[type as keyof typeof objectKeys];
+    assert.ok(key, `Unexpected verification type ${type}`);
+    return new Response(JSON.stringify({ [key]: { uuid, trip_uuid: tripUuid } }), { status: 200 });
   }
 
   const match = url.match(/\/v1\/get\/([^/]+)\/id\/([1-9]\d*)\//);
@@ -135,10 +151,12 @@ try {
   const uuidResult = await createTripItem(client, tripUuid, {
     type: "note",
     name: "UUID destination",
-    text: "Resolved through the v1 trip list.",
+    text: "Created through v2 UUID routing.",
   });
   assert.equal(uuidResult.partial_success, undefined);
-  assert.equal(posts.at(-1)?.object.trip_id, tripId);
+  assert.equal(Object.values(uuidResult.created as Record<string, unknown>).includes(undefined), false);
+  assert.equal(posts.at(-1)?.object.trip_uuid, tripUuid);
+  assert.equal("trip_id" in (posts.at(-1)?.object ?? {}), false);
 
   omitCreatedIdentifier = true;
   const partialResult = await createTripItem(client, tripId, {
@@ -148,7 +166,16 @@ try {
   assert.equal(partialResult.partial_success, true);
   assert.match(String(partialResult.warning), /before retrying to avoid a duplicate/);
 
-  console.log("Direct trip-item creation passed for all 12 writable types, UUID destinations, and partial-success safety.");
+  postFailure = new Response(
+    JSON.stringify({ Error: { code: "400", description: "CarObject failed XSD validation at car_type." } }),
+    { status: 400 },
+  );
+  await assert.rejects(
+    tripItApiPost(client, "https://api.tripit.com/v2/create/car/format/json", { CarObject: { trip_id: tripId } }),
+    /status 400: CarObject failed XSD validation at car_type\./,
+  );
+
+  console.log("Direct trip-item creation passed for all writable types, UUID destinations, partial-success safety, and upstream errors.");
 } finally {
   globalThis.fetch = originalFetch;
 }

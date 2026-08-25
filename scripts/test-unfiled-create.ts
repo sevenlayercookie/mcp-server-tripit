@@ -52,9 +52,10 @@ try {
 
   assert.equal(posts.length, 2);
   posts.forEach((post) => {
-    assert.equal(post.url, "https://api.tripit.com/v1/create/format/json");
     assert.equal("Request" in post.body, false);
   });
+  assert.equal(posts[0]?.url, "https://api.tripit.com/v2/create/car/format/json");
+  assert.equal(posts[1]?.url, "https://api.tripit.com/v2/create/note/format/json");
 
   assert.deepEqual(posts[0].body, {
     CarObject: {
