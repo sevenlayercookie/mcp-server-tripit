@@ -1,17 +1,18 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import * as z from "zod/v4";
 import { withTripIt } from "../client";
-import { jsonResult } from "../results";
-import { requireExactlyOneSelector } from "./common";
+import { normalizedToolOutputSchema, toolResult } from "../results";
+import { requireExactlyOneSelector, toolAnnotations } from "./common";
 
 const objectTypeSchema = z.enum(["lodging", "activity", "air", "transport"]);
 
 export function registerDocumentTools(server: McpServer): void {
   server.registerTool(
-    "tripit_documents_attach",
+    "tripit_attach_document",
     {
-      title: "TripIt Documents Attach",
-      description: "Attach a document to a TripIt object. Type can be omitted and will be auto-detected.",
+      title: "Attach a TripIt document",
+      description:
+        "Attach an image or PDF available on the MCP server filesystem to a supported TripIt object. Type can be omitted for auto-detection.",
       inputSchema: {
         id: z.string().min(1).describe("Object UUID to attach to."),
         type: objectTypeSchema.optional().describe("TripIt object type. Optional; auto-detected when omitted."),
@@ -19,9 +20,11 @@ export function registerDocumentTools(server: McpServer): void {
         caption: z.string().optional().describe("Optional caption for the attached document."),
         mimeType: z.string().optional().describe("Optional MIME type override."),
       },
+      outputSchema: normalizedToolOutputSchema,
+      annotations: toolAnnotations("write"),
     },
     async ({ id, type, file, caption, mimeType }) =>
-      jsonResult(
+      toolResult("tripit_attach_document", async () =>
         (await withTripIt((client) =>
           client.attachDocument({
             objectType: type,
@@ -35,10 +38,10 @@ export function registerDocumentTools(server: McpServer): void {
   );
 
   server.registerTool(
-    "tripit_documents_remove",
+    "tripit_remove_document",
     {
-      title: "TripIt Documents Remove",
-      description: "Remove a document from a TripIt object. Type can be omitted and will be auto-detected.",
+      title: "Remove a TripIt document",
+      description: "Permanently remove one or all documents from a supported TripIt object.",
       inputSchema: {
         id: z.string().min(1).describe("Object UUID to remove the document from."),
         type: objectTypeSchema.optional().describe("TripIt object type. Optional; auto-detected when omitted."),
@@ -48,9 +51,8 @@ export function registerDocumentTools(server: McpServer): void {
         index: z.number().int().positive().optional().describe("1-based image index to remove."),
         all: z.boolean().optional().describe("When true, remove all documents."),
       },
-      annotations: {
-        destructiveHint: true,
-      },
+      outputSchema: normalizedToolOutputSchema,
+      annotations: toolAnnotations("delete"),
     },
     async ({ id, type, imageUuid, imageUrl, caption, index, all }) => {
       requireExactlyOneSelector(
@@ -58,7 +60,7 @@ export function registerDocumentTools(server: McpServer): void {
         "Provide exactly one selector: imageUuid, imageUrl, caption, index, or all.",
       );
 
-      return jsonResult(
+      return toolResult("tripit_remove_document", async () =>
         (await withTripIt((client) =>
           client.removeDocument({
             objectType: type,

@@ -1,30 +1,32 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import * as z from "zod/v4";
 import { withTripIt } from "../client";
-import { jsonResult } from "../results";
+import { normalizedToolOutputSchema, toolResult } from "../results";
+import { toolAnnotations } from "./common";
 
 export function registerActivityTools(server: McpServer): void {
   server.registerTool(
-    "tripit_activities_get",
+    "tripit_get_activity",
     {
-      title: "TripIt Activities Get",
-      description: "Get an activity by ID or UUID.",
+      title: "Get a TripIt activity",
+      description: "Use this to inspect an activity by numeric ID or UUID before updating or deleting it.",
       inputSchema: {
         id: z.string().min(1).describe("Activity ID or UUID."),
       },
-      annotations: {
-        readOnlyHint: true,
-        idempotentHint: true,
-      },
+      outputSchema: normalizedToolOutputSchema,
+      annotations: toolAnnotations("read"),
     },
-    async ({ id }) => jsonResult((await withTripIt((client) => client.getActivity(id))) as Record<string, unknown>),
+    async ({ id }) =>
+      toolResult("tripit_get_activity", async () =>
+        (await withTripIt((client) => client.getActivity(id))) as Record<string, unknown>,
+      ),
   );
 
   server.registerTool(
-    "tripit_activities_create",
+    "tripit_create_activity",
     {
-      title: "TripIt Activities Create",
-      description: "Add an activity to a trip.",
+      title: "Create a TripIt activity",
+      description: "Create a structured activity directly in a specified TripIt trip.",
       inputSchema: {
         trip: z.string().min(1).describe("Trip UUID or Trip ID."),
         name: z.string().min(1).describe("Activity name."),
@@ -40,9 +42,11 @@ export function registerActivityTools(server: McpServer): void {
         zip: z.string().optional().describe("Postal code."),
         country: z.string().optional().describe("Country code."),
       },
+      outputSchema: normalizedToolOutputSchema,
+      annotations: toolAnnotations("create"),
     },
     async (args) =>
-      jsonResult(
+      toolResult("tripit_create_activity", async () =>
         (await withTripIt((client) =>
           client.createActivity({
             tripId: args.trip,
@@ -64,10 +68,10 @@ export function registerActivityTools(server: McpServer): void {
   );
 
   server.registerTool(
-    "tripit_activities_update",
+    "tripit_update_activity",
     {
-      title: "TripIt Activities Update",
-      description: "Update an existing activity.",
+      title: "Update a TripIt activity",
+      description: "Update an activity after confirming its identifier and current fields with tripit_get_activity.",
       inputSchema: {
         id: z.string().min(1).describe("Activity ID or UUID."),
         trip: z.string().optional().describe("Trip UUID or Trip ID."),
@@ -85,9 +89,11 @@ export function registerActivityTools(server: McpServer): void {
         country: z.string().optional().describe("Country code."),
         notes: z.string().optional().describe("Activity notes."),
       },
+      outputSchema: normalizedToolOutputSchema,
+      annotations: toolAnnotations("update"),
     },
     async (args) =>
-      jsonResult(
+      toolResult("tripit_update_activity", async () =>
         (await withTripIt((client) =>
           client.updateActivity({
             id: args.id,
@@ -111,17 +117,19 @@ export function registerActivityTools(server: McpServer): void {
   );
 
   server.registerTool(
-    "tripit_activities_delete",
+    "tripit_delete_activity",
     {
-      title: "TripIt Activities Delete",
-      description: "Delete an activity by ID or UUID.",
+      title: "Delete a TripIt activity",
+      description: "Permanently delete an activity after confirming it with tripit_get_activity.",
       inputSchema: {
         id: z.string().min(1).describe("Activity ID or UUID."),
       },
-      annotations: {
-        destructiveHint: true,
-      },
+      outputSchema: normalizedToolOutputSchema,
+      annotations: toolAnnotations("delete"),
     },
-    async ({ id }) => jsonResult((await withTripIt((client) => client.deleteActivity(id))) as Record<string, unknown>),
+    async ({ id }) =>
+      toolResult("tripit_delete_activity", async () =>
+        (await withTripIt((client) => client.deleteActivity(id))) as Record<string, unknown>,
+      ),
   );
 }

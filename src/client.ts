@@ -44,6 +44,18 @@ type TripItConstructor = new (config: {
   password: string;
 }) => TripItClient;
 
+export class TripItApiError extends Error {
+  readonly code = "TRIPIT_API_ERROR";
+
+  constructor(
+    readonly status: number,
+    message: string,
+  ) {
+    super(message);
+    this.name = "TripItApiError";
+  }
+}
+
 async function loadTripItConstructor(): Promise<TripItConstructor> {
   const module = (await import("tripit")) as unknown as {
     TripIt?: TripItConstructor;
@@ -98,10 +110,14 @@ export async function tripItApiGet<T>(client: TripItClient, url: string): Promis
   const text = await response.text();
 
   if (!response.ok) {
-    throw new Error(`TripIt API error (${response.status}): ${text}`);
+    throw new TripItApiError(response.status, `TripIt API request failed with status ${response.status}.`);
   }
 
-  return JSON.parse(text) as T;
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    throw new TripItApiError(response.status, "TripIt returned a non-JSON response.");
+  }
 }
 
 export async function tripItApiPost<T>(
@@ -120,8 +136,12 @@ export async function tripItApiPost<T>(
   const text = await response.text();
 
   if (!response.ok) {
-    throw new Error(`TripIt API error (${response.status}): ${text}`);
+    throw new TripItApiError(response.status, `TripIt API request failed with status ${response.status}.`);
   }
 
-  return JSON.parse(text) as T;
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    throw new TripItApiError(response.status, "TripIt returned a non-JSON response.");
+  }
 }

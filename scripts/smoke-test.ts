@@ -29,7 +29,12 @@ async function callTool(client: Client, name: string, args: Record<string, unkno
     throw new Error(`Tool ${name} returned an MCP error result.`);
   }
 
-  return parseToolResult(result as Awaited<ReturnType<Client["callTool"]>>);
+  const envelope = parseToolResult(result as Awaited<ReturnType<Client["callTool"]>>);
+  if (envelope.ok !== true || typeof envelope.data !== "object" || envelope.data === null) {
+    throw new Error(`Tool ${name} did not return a normalized success envelope.`);
+  }
+
+  return envelope.data as Record<string, any>;
 }
 
 async function main(): Promise<void> {
@@ -75,7 +80,7 @@ async function main(): Promise<void> {
       }
     }
 
-    const trip = await callTool(client, "tripit_trips_create", {
+    const trip = await callTool(client, "tripit_create_trip", {
       name: tripName,
       start: startDate,
       end: endDate,
@@ -86,7 +91,7 @@ async function main(): Promise<void> {
       throw new Error("Trip creation did not return a trip UUID.");
     }
 
-    const hotel = await callTool(client, "tripit_hotels_create", {
+    const hotel = await callTool(client, "tripit_create_lodging", {
       trip: created.tripId,
       name: `Hotel ${stamp}`,
       checkin: startDate,
@@ -104,7 +109,7 @@ async function main(): Promise<void> {
       throw new Error("Hotel creation did not return a UUID.");
     }
 
-    const flight = await callTool(client, "tripit_flights_create", {
+    const flight = await callTool(client, "tripit_create_flight", {
       trip: created.tripId,
       name: `Flight ${stamp}`,
       airline: "Example Air",
@@ -127,7 +132,7 @@ async function main(): Promise<void> {
       throw new Error("Flight creation did not return a UUID.");
     }
 
-    const transportItem = await callTool(client, "tripit_transport_create", {
+    const transportItem = await callTool(client, "tripit_create_transport", {
       trip: created.tripId,
       from: "1 Test Street, Tokyo",
       to: "Tokyo Station",
@@ -143,7 +148,7 @@ async function main(): Promise<void> {
       throw new Error("Transport creation did not return a UUID.");
     }
 
-    const activity = await callTool(client, "tripit_activities_create", {
+    const activity = await callTool(client, "tripit_create_activity", {
       trip: created.tripId,
       name: `Dinner ${stamp}`,
       startDate,
@@ -161,7 +166,7 @@ async function main(): Promise<void> {
       throw new Error("Activity creation did not return a UUID.");
     }
 
-    const fetchedTrip = await callTool(client, "tripit_trips_get", {
+    const fetchedTrip = await callTool(client, "tripit_get_trip", {
       id: created.tripId,
     });
 
@@ -197,19 +202,19 @@ async function main(): Promise<void> {
     const cleanupSteps: Array<Promise<unknown>> = [];
 
     if (created.activityId) {
-      cleanupSteps.push(callTool(client, "tripit_activities_delete", { id: created.activityId }).catch(() => undefined));
+      cleanupSteps.push(callTool(client, "tripit_delete_activity", { id: created.activityId }).catch(() => undefined));
     }
     if (created.transportId) {
-      cleanupSteps.push(callTool(client, "tripit_transport_delete", { id: created.transportId }).catch(() => undefined));
+      cleanupSteps.push(callTool(client, "tripit_delete_transport", { id: created.transportId }).catch(() => undefined));
     }
     if (created.flightId) {
-      cleanupSteps.push(callTool(client, "tripit_flights_delete", { id: created.flightId }).catch(() => undefined));
+      cleanupSteps.push(callTool(client, "tripit_delete_flight", { id: created.flightId }).catch(() => undefined));
     }
     if (created.hotelId) {
-      cleanupSteps.push(callTool(client, "tripit_hotels_delete", { id: created.hotelId }).catch(() => undefined));
+      cleanupSteps.push(callTool(client, "tripit_delete_lodging", { id: created.hotelId }).catch(() => undefined));
     }
     if (created.tripId) {
-      cleanupSteps.push(callTool(client, "tripit_trips_delete", { id: created.tripId }).catch(() => undefined));
+      cleanupSteps.push(callTool(client, "tripit_delete_trip", { id: created.tripId }).catch(() => undefined));
     }
 
     await Promise.all(cleanupSteps);

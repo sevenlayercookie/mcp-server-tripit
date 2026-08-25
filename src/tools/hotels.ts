@@ -1,31 +1,32 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import * as z from "zod/v4";
 import { withTripIt } from "../client";
-import { jsonResult } from "../results";
-import { requireExactlyOneSelector } from "./common";
+import { normalizedToolOutputSchema, toolResult } from "../results";
+import { requireExactlyOneSelector, toolAnnotations } from "./common";
 
 export function registerHotelTools(server: McpServer): void {
   server.registerTool(
-    "tripit_hotels_get",
+    "tripit_get_lodging",
     {
-      title: "TripIt Hotels Get",
-      description: "Get a hotel reservation by ID or UUID.",
+      title: "Get TripIt lodging",
+      description: "Use this to inspect a lodging reservation by numeric ID or UUID before updating or deleting it.",
       inputSchema: {
         id: z.string().min(1).describe("Hotel ID or UUID."),
       },
-      annotations: {
-        readOnlyHint: true,
-        idempotentHint: true,
-      },
+      outputSchema: normalizedToolOutputSchema,
+      annotations: toolAnnotations("read"),
     },
-    async ({ id }) => jsonResult((await withTripIt((client) => client.getHotel(id))) as Record<string, unknown>),
+    async ({ id }) =>
+      toolResult("tripit_get_lodging", async () =>
+        (await withTripIt((client) => client.getHotel(id))) as Record<string, unknown>,
+      ),
   );
 
   server.registerTool(
-    "tripit_hotels_create",
+    "tripit_create_lodging",
     {
-      title: "TripIt Hotels Create",
-      description: "Add a hotel booking to a trip.",
+      title: "Create TripIt lodging",
+      description: "Create a hotel, rental, campground, or other lodging reservation directly in a specified TripIt trip.",
       inputSchema: {
         trip: z.string().min(1).describe("Trip UUID or Trip ID."),
         name: z.string().min(1).describe("Hotel name."),
@@ -44,9 +45,11 @@ export function registerHotelTools(server: McpServer): void {
         notes: z.string().optional().describe("Notes for the booking."),
         cost: z.string().optional().describe("Total cost."),
       },
+      outputSchema: normalizedToolOutputSchema,
+      annotations: toolAnnotations("create"),
     },
     async (args) =>
-      jsonResult(
+      toolResult("tripit_create_lodging", async () =>
         (await withTripIt((client) =>
           client.createHotel({
             tripId: args.trip,
@@ -71,10 +74,10 @@ export function registerHotelTools(server: McpServer): void {
   );
 
   server.registerTool(
-    "tripit_hotels_update",
+    "tripit_update_lodging",
     {
-      title: "TripIt Hotels Update",
-      description: "Update an existing hotel reservation.",
+      title: "Update TripIt lodging",
+      description: "Update lodging after confirming its identifier and current fields with tripit_get_lodging.",
       inputSchema: {
         id: z.string().min(1).describe("Hotel ID or UUID."),
         trip: z.string().optional().describe("Trip UUID or Trip ID."),
@@ -94,9 +97,11 @@ export function registerHotelTools(server: McpServer): void {
         notes: z.string().optional().describe("Notes for the booking."),
         cost: z.string().optional().describe("Total cost."),
       },
+      outputSchema: normalizedToolOutputSchema,
+      annotations: toolAnnotations("update"),
     },
     async (args) =>
-      jsonResult(
+      toolResult("tripit_update_lodging", async () =>
         (await withTripIt((client) =>
           client.updateHotel({
             id: args.id,
@@ -122,34 +127,38 @@ export function registerHotelTools(server: McpServer): void {
   );
 
   server.registerTool(
-    "tripit_hotels_delete",
+    "tripit_delete_lodging",
     {
-      title: "TripIt Hotels Delete",
-      description: "Delete a hotel reservation by ID or UUID.",
+      title: "Delete TripIt lodging",
+      description: "Permanently delete lodging after confirming it with tripit_get_lodging.",
       inputSchema: {
         id: z.string().min(1).describe("Hotel ID or UUID."),
       },
-      annotations: {
-        destructiveHint: true,
-      },
+      outputSchema: normalizedToolOutputSchema,
+      annotations: toolAnnotations("delete"),
     },
-    async ({ id }) => jsonResult((await withTripIt((client) => client.deleteHotel(id))) as Record<string, unknown>),
+    async ({ id }) =>
+      toolResult("tripit_delete_lodging", async () =>
+        (await withTripIt((client) => client.deleteHotel(id))) as Record<string, unknown>,
+      ),
   );
 
   server.registerTool(
-    "tripit_hotels_attach_document",
+    "tripit_attach_lodging_document",
     {
-      title: "TripIt Hotels Attach Document",
-      description: "Attach an image or PDF document to a hotel reservation.",
+      title: "Attach a TripIt lodging document",
+      description: "Attach an image or PDF available on the MCP server filesystem to a lodging reservation.",
       inputSchema: {
         id: z.string().min(1).describe("Hotel ID or UUID."),
         file: z.string().min(1).describe("Path to the file on the local filesystem."),
         name: z.string().optional().describe("Document caption or name."),
         mimeType: z.string().optional().describe("Optional MIME type override."),
       },
+      outputSchema: normalizedToolOutputSchema,
+      annotations: toolAnnotations("write"),
     },
     async ({ id, file, name, mimeType }) =>
-      jsonResult(
+      toolResult("tripit_attach_lodging_document", async () =>
         (await withTripIt((client) =>
           client.attachDocument({
             objectType: "lodging",
@@ -163,10 +172,10 @@ export function registerHotelTools(server: McpServer): void {
   );
 
   server.registerTool(
-    "tripit_hotels_remove_document",
+    "tripit_remove_lodging_document",
     {
-      title: "TripIt Hotels Remove Document",
-      description: "Remove a document from a hotel reservation.",
+      title: "Remove a TripIt lodging document",
+      description: "Permanently remove one or all documents from a lodging reservation.",
       inputSchema: {
         id: z.string().min(1).describe("Hotel ID or UUID."),
         uuid: z.string().optional().describe("Attachment UUID to remove."),
@@ -176,9 +185,8 @@ export function registerHotelTools(server: McpServer): void {
         index: z.number().int().positive().optional().describe("1-based document index to remove."),
         all: z.boolean().optional().describe("When true, remove all documents."),
       },
-      annotations: {
-        destructiveHint: true,
-      },
+      outputSchema: normalizedToolOutputSchema,
+      annotations: toolAnnotations("delete"),
     },
     async ({ id, uuid, imageUuid, url, caption, index, all }) => {
       const resolvedUuid = uuid ?? imageUuid;
@@ -187,7 +195,7 @@ export function registerHotelTools(server: McpServer): void {
         "Provide exactly one selector: uuid, imageUuid, url, caption, index, or all.",
       );
 
-      return jsonResult(
+      return toolResult("tripit_remove_lodging_document", async () =>
         (await withTripIt((client) =>
           client.removeDocument({
             objectType: "lodging",

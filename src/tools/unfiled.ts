@@ -1,7 +1,8 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import * as z from "zod/v4";
 import { tripItApiGet, tripItApiPost, withTripIt, type TripItClient } from "../client";
-import { jsonResult } from "../results";
+import { normalizedToolOutputSchema, toolResult } from "../results";
+import { toolAnnotations } from "./common";
 
 const objectTypes = [
   "air",
@@ -90,7 +91,7 @@ const optionalAddressShape = {
   country: z.string().optional().describe("ISO country code such as US or CA."),
 };
 
-const conversionTargetSchema = z.discriminatedUnion("type", [
+export const writableItemSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("lodging"),
     name: z.string().min(1).describe("Property, campground, or lodging name."),
@@ -146,7 +147,6 @@ const conversionTargetSchema = z.discriminatedUnion("type", [
     dropoffPhone: z.string().optional().describe("Drop-off location phone."),
     reservationHolder: personSchema.optional().describe("Reservation holder."),
     drivers: z.array(personSchema).optional().describe("Named drivers."),
-    carDescription: z.string().optional().describe("Vehicle description."),
     carType: z.string().optional().describe("Vehicle class or type."),
     mileageCharges: z.string().optional().describe("Mileage allowance or charges."),
     ...reservationDetailsShape,
@@ -332,7 +332,7 @@ const conversionTargetSchema = z.discriminatedUnion("type", [
   }),
 ]);
 
-type ConversionTarget = z.infer<typeof conversionTargetSchema>;
+export type WritableItemInput = z.infer<typeof writableItemSchema>;
 type SourceDisposition = "keep_unfiled" | "delete" | "assign_to_trip";
 
 const responseKeys: Record<TripItObjectType, string> = {
@@ -400,12 +400,6 @@ function namedResponseItems(response: Record<string, unknown>, key: string): Rec
 function assertUnfiled(response: Record<string, unknown>, type: TripItObjectType, id: string): void {
   if (!isUnfiled(responseItem(response, type))) {
     throw new Error(`${type} item ${id} belongs to a trip and is not an unfiled item.`);
-  }
-}
-
-function assertNoTrip(data: Record<string, unknown>): void {
-  if (data.trip_id || data.trip_uuid) {
-    throw new Error("Unfiled item data must not include trip_id or trip_uuid.");
   }
 }
 
@@ -696,32 +690,12 @@ export function buildAssignmentItem(
   return replacement;
 }
 
-export function buildUnfiledCreateItem(
-  data: Record<string, unknown>,
-  type: AssignableTripItObjectType,
-): Record<string, unknown> {
-  assertNoTrip(data);
-  const fields = [
-    ...baseObjectFields,
-    ...(reservationTypes.has(type) ? reservationFields : []),
-    ...typeFields[type],
-  ];
-  const item = copyFields(data, fields, (key, value) => sanitizeNested(key, value, type));
-
-  if (type in segmentFields && !item.Segment) {
-    throw new Error(`A ${type} object requires at least one complete segment.`);
-  }
-
-  return item;
-}
-
-export async function createUnfiledItem(
+export async function createItemWithoutTrip(
   client: TripItClient,
-  type: AssignableTripItObjectType,
-  data: Record<string, unknown>,
+  item: WritableItemInput,
 ): Promise<Record<string, unknown>> {
   return tripItApiPost<Record<string, unknown>>(client, apiEndpoint("v1", "create"), {
-    [responseKeys[type]]: buildUnfiledCreateItem(data, type),
+    [responseKeys[item.type]]: buildConversionItem(item),
   });
 }
 
@@ -1009,8 +983,9 @@ function conversionReservationFields(target: {
   });
 }
 
-export function buildConversionItem(target: ConversionTarget, trip: string): Record<string, unknown> {
-  const association = isUuid(trip) ? { trip_uuid: trip } : { trip_id: numericId(trip, "destination trip ID") };
+export function buildConversionItem(target: WritableItemInput, trip?: string): Record<string, unknown> {
+  const association =
+    trip === undefined ? {} : isUuid(trip) ? { trip_uuid: trip } : { trip_id: numericId(trip, "destination trip ID") };
 
   if (target.type === "lodging") {
     return compactRecord({
@@ -1072,7 +1047,6 @@ export function buildConversionItem(target: ConversionTarget, trip: string): Rec
       end_location_hours: target.dropoffHours,
       end_location_name: target.dropoffName,
       end_location_phone: target.dropoffPhone,
-      car_description: target.carDescription,
       car_type: target.carType,
       mileage_charges: target.mileageCharges,
     });
@@ -1294,7 +1268,7 @@ export async function convertUnfiledItem(
   sourceType: TripItObjectType,
   sourceId: string,
   trip: string,
-  target: ConversionTarget,
+  target: WritableItemInput,
   sourceDisposition: SourceDisposition,
 ): Promise<Record<string, unknown>> {
   if (sourceType === "weather" && sourceDisposition === "assign_to_trip") {
@@ -1399,20 +1373,18 @@ export async function convertUnfiledItem(
 
 export function registerUnfiledTools(server: McpServer): void {
   server.registerTool(
-    "tripit_unfiled_list",
+    "tripit_list_unfiled_items",
     {
-      title: "TripIt Unfiled Items List",
-      description: "List unfiled travel items. Results are filtered to objects with no trip ID.",
+      title: "List TripIt unfiled items",
+      description: "Use this to find travel items that have no trip association before getting, assigning, converting, or deleting one.",
       inputSchema: {
         type: objectTypeSchema.optional().describe("Optional TripIt object type filter."),
         pageSize: z.number().int().positive().optional().describe("Number of source objects to fetch. Defaults to 100."),
         pageNum: z.number().int().positive().optional().describe("Source page number to fetch. Defaults to 1."),
         past: z.boolean().optional().describe("When true, list past objects instead of current/future objects."),
       },
-      annotations: {
-        readOnlyHint: true,
-        idempotentHint: true,
-      },
+      outputSchema: normalizedToolOutputSchema,
+      annotations: toolAnnotations("read"),
     },
     async ({ type, pageSize, pageNum, past }) => {
       const filters = ["traveler", "false"];
@@ -1423,29 +1395,27 @@ export function registerUnfiledTools(server: McpServer): void {
       url.searchParams.set("page_size", String(pageSize ?? 100));
       url.searchParams.set("page_num", String(pageNum ?? 1));
 
-      return jsonResult(
-        await withTripIt(async (client) => filterUnfiled(await tripItApiGet<Record<string, unknown>>(client, url.toString()))),
+      return toolResult("tripit_list_unfiled_items", async () =>
+        withTripIt(async (client) => filterUnfiled(await tripItApiGet<Record<string, unknown>>(client, url.toString()))),
       );
     },
   );
 
   server.registerTool(
-    "tripit_unfiled_get",
+    "tripit_get_unfiled_item",
     {
-      title: "TripIt Unfiled Items Get",
-      description: "Get an unfiled travel item by object type and ID or UUID.",
+      title: "Get a TripIt unfiled item",
+      description: "Use this to inspect one unfiled item by type and numeric ID or UUID before changing it.",
       inputSchema: {
         type: objectTypeSchema.describe("TripIt object type."),
         id: z.string().min(1).describe("TripIt object ID or UUID."),
       },
-      annotations: {
-        readOnlyHint: true,
-        idempotentHint: true,
-      },
+      outputSchema: normalizedToolOutputSchema,
+      annotations: toolAnnotations("read"),
     },
     async ({ type, id }) =>
-      jsonResult(
-        await withTripIt(async (client) => {
+      toolResult("tripit_get_unfiled_item", async () =>
+        withTripIt(async (client) => {
           const response = await tripItApiGet<Record<string, unknown>>(client, identifierEndpoint("get", type, id));
           assertUnfiled(response, type, id);
           return response;
@@ -1454,111 +1424,111 @@ export function registerUnfiledTools(server: McpServer): void {
   );
 
   server.registerTool(
-    "tripit_unfiled_create",
+    "tripit_create_item_without_trip",
     {
-      title: "TripIt Unfiled Items Create",
+      title: "Create a TripIt item without a trip",
       description:
-        "Create a writable travel item through TripIt's v1 create endpoint without a trip ID. The server wraps and orders fields for TripIt's XSD. TripIt may auto-file it when account auto-import is enabled and dates overlap a trip.",
+        "Create one typed travel item without specifying a destination trip. TripIt may still auto-file it when account auto-import is enabled and its dates overlap a trip.",
       inputSchema: {
-        type: assignableObjectTypeSchema.describe("Writable TripIt object type. Weather is read-only."),
-        data: z.record(z.string(), z.unknown()).describe("Fields for the TripIt API object, excluding trip_id and trip_uuid."),
+        item: writableItemSchema.describe("Complete typed fields for one writable TripIt item. Weather is read-only."),
       },
+      outputSchema: normalizedToolOutputSchema,
+      annotations: toolAnnotations("create"),
     },
-    async ({ type, data }) => jsonResult(await withTripIt((client) => createUnfiledItem(client, type, data))),
+    async ({ item }) =>
+      toolResult("tripit_create_item_without_trip", async () =>
+        withTripIt((client) => createItemWithoutTrip(client, item)),
+      ),
   );
 
   server.registerTool(
-    "tripit_unfiled_update",
+    "tripit_replace_unfiled_item",
     {
-      title: "TripIt Unfiled Items Update",
-      description: "Replace an unfiled travel item. Data must contain the complete replacement object required by TripIt.",
+      title: "Replace a TripIt unfiled item",
+      description:
+        "Completely replace one writable unfiled item after reading it with tripit_get_unfiled_item. Omitted optional fields are removed.",
       inputSchema: {
-        type: objectTypeSchema.describe("TripIt object type."),
         id: z.string().min(1).describe("TripIt object ID or UUID."),
-        data: z.record(z.string(), z.unknown()).describe("Complete replacement fields, excluding trip_id and trip_uuid."),
+        item: writableItemSchema.describe("Complete typed replacement. Its type must match the existing item."),
       },
-      annotations: {
-        idempotentHint: true,
-      },
+      outputSchema: normalizedToolOutputSchema,
+      annotations: toolAnnotations("update"),
     },
-    async ({ type, id, data }) => {
-      assertNoTrip(data);
-      return jsonResult(
-        await withTripIt(async (client) => {
-          const existing = await tripItApiGet<Record<string, unknown>>(client, identifierEndpoint("get", type, id));
-          assertUnfiled(existing, type, id);
-          return tripItApiPost<Record<string, unknown>>(client, identifierEndpoint("replace", type, id), {
-            [responseKeys[type]]: data,
+    async ({ id, item }) =>
+      toolResult("tripit_replace_unfiled_item", async () =>
+        withTripIt(async (client) => {
+          const existing = await tripItApiGet<Record<string, unknown>>(client, identifierEndpoint("get", item.type, id));
+          assertUnfiled(existing, item.type, id);
+          return tripItApiPost<Record<string, unknown>>(client, identifierEndpoint("replace", item.type, id), {
+            [responseKeys[item.type]]: buildConversionItem(item),
           });
         }),
-      );
-    },
+      ),
   );
 
   server.registerTool(
-    "tripit_unfiled_assign",
+    "tripit_assign_unfiled_item",
     {
-      title: "TripIt Unfiled Items Assign",
+      title: "Assign a TripIt unfiled item",
       description:
-        "File an unfiled travel item in a trip without changing its object type or parsing raw text. Use tripit_unfiled_convert to create a structured object from parsed details.",
+        "File an unfiled travel item in a trip without changing its type or parsing raw text. Use tripit_convert_unfiled_item when the source needs structured conversion.",
       inputSchema: {
         type: assignableObjectTypeSchema.describe("TripIt object type."),
         id: z.string().min(1).describe("Unfiled TripIt object ID or UUID."),
         trip: z.string().min(1).describe("Destination TripIt trip ID or UUID."),
       },
-      annotations: {
-        idempotentHint: true,
-      },
+      outputSchema: normalizedToolOutputSchema,
+      annotations: toolAnnotations("write"),
     },
     async ({ type, id, trip }) =>
-      jsonResult(await withTripIt((client) => assignUnfiledItem(client, type, id, trip))),
+      toolResult("tripit_assign_unfiled_item", async () =>
+        withTripIt((client) => assignUnfiledItem(client, type, id, trip)),
+      ),
   );
 
   server.registerTool(
-    "tripit_unfiled_convert",
+    "tripit_convert_unfiled_item",
     {
-      title: "TripIt Unfiled Items Convert",
+      title: "Convert a TripIt unfiled item",
       description:
-        "Create any writable structured TripIt itinerary object from an unfiled item's parsed details. Supports air, activity, car, parking, cruise, directions, lodging, map, note, rail, restaurant, and transport. First read the source with tripit_unfiled_get, extract every supported field, then call this tool. Creation and destination verification complete before the original source is kept, deleted, or filed in the trip.",
+        "Create a typed itinerary object from an unfiled source. First call tripit_get_unfiled_item and parse its details. Creation and destination verification finish before the source is kept, deleted, or assigned.",
       inputSchema: {
         sourceType: objectTypeSchema.describe("Object type of the original unfiled item."),
         sourceId: z.string().min(1).describe("ID or UUID of the original unfiled item."),
         trip: z.string().min(1).describe("Destination TripIt trip ID or UUID."),
-        target: conversionTargetSchema.describe("Structured object type and parsed TripIt fields to create."),
+        target: writableItemSchema.describe("Typed writable object and parsed TripIt fields to create."),
         sourceDisposition: z
           .enum(["keep_unfiled", "delete", "assign_to_trip"])
           .describe(
             "What to do with the original only after successful conversion: keep it unfiled, delete it, or file the raw original in the destination trip.",
           ),
       },
-      annotations: {
-        destructiveHint: true,
-      },
+      outputSchema: normalizedToolOutputSchema,
+      annotations: toolAnnotations("destructive-write"),
     },
     async ({ sourceType, sourceId, trip, target, sourceDisposition }) =>
-      jsonResult(
-        await withTripIt((client) =>
+      toolResult("tripit_convert_unfiled_item", async () =>
+        withTripIt((client) =>
           convertUnfiledItem(client, sourceType, sourceId, trip, target, sourceDisposition),
         ),
       ),
   );
 
   server.registerTool(
-    "tripit_unfiled_delete",
+    "tripit_delete_unfiled_item",
     {
-      title: "TripIt Unfiled Items Delete",
-      description: "Delete an unfiled travel item by object type and ID or UUID.",
+      title: "Delete a TripIt unfiled item",
+      description: "Permanently delete a writable unfiled item after confirming it with tripit_get_unfiled_item.",
       inputSchema: {
-        type: objectTypeSchema.describe("TripIt object type."),
+        type: assignableObjectTypeSchema.describe("Writable TripIt object type. Weather is read-only."),
         id: z.string().min(1).describe("TripIt object ID or UUID."),
       },
-      annotations: {
-        destructiveHint: true,
-      },
+      outputSchema: normalizedToolOutputSchema,
+      annotations: toolAnnotations("delete"),
     },
     async ({ type, id }) =>
-      jsonResult(
-        await withTripIt(async (client) => {
+      toolResult("tripit_delete_unfiled_item", async () =>
+        withTripIt(async (client) => {
           const existing = await tripItApiGet<Record<string, unknown>>(client, identifierEndpoint("get", type, id));
           assertUnfiled(existing, type, id);
           return tripItApiGet<Record<string, unknown>>(client, identifierEndpoint("delete", type, id));

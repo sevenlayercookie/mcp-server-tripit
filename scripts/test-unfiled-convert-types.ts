@@ -51,7 +51,6 @@ const car = buildConversionItem(
         frequentTravelerSupplier: "Example Car Rental",
       },
     ],
-    carDescription: "Compact SUV",
     carType: "SUV",
     mileageCharges: "Unlimited kilometres",
   },
@@ -87,7 +86,6 @@ assert.deepEqual(Object.keys(car), [
   "Driver",
   "start_location_name",
   "end_location_name",
-  "car_description",
   "car_type",
   "mileage_charges",
 ]);

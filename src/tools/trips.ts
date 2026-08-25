@@ -1,61 +1,63 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import * as z from "zod/v4";
 import { withTripIt } from "../client";
-import { jsonResult } from "../results";
+import { normalizedToolOutputSchema, toolResult } from "../results";
+import { toolAnnotations } from "./common";
 
 export function registerTripTools(server: McpServer): void {
   server.registerTool(
-    "tripit_trips_list",
+    "tripit_list_trips",
     {
-      title: "TripIt Trips List",
-      description: "List trips in the authenticated TripIt account.",
+      title: "List TripIt trips",
+      description: "Use this to find trips in the authenticated TripIt account before reading or changing one.",
       inputSchema: {
         pageSize: z.number().int().positive().optional().describe("Number of trips to return. Defaults to 100."),
         pageNum: z.number().int().positive().optional().describe("Page number to fetch. Defaults to 1."),
         past: z.boolean().optional().describe("When true, list past trips instead of current/future trips."),
       },
-      annotations: {
-        readOnlyHint: true,
-        idempotentHint: true,
-      },
+      outputSchema: normalizedToolOutputSchema,
+      annotations: toolAnnotations("read"),
     },
     async ({ pageSize, pageNum, past }) =>
-      jsonResult(
+      toolResult("tripit_list_trips", async () =>
         (await withTripIt((client) => client.listTrips(pageSize ?? 100, pageNum ?? 1, past ?? false))) as Record<string, unknown>,
       ),
   );
 
   server.registerTool(
-    "tripit_trips_get",
+    "tripit_get_trip",
     {
-      title: "TripIt Trips Get",
-      description: "Get a trip by TripIt ID or UUID.",
+      title: "Get a TripIt trip",
+      description: "Use this to inspect one trip by its TripIt numeric ID or UUID before updating or deleting it.",
       inputSchema: {
         id: z.string().min(1).describe("Trip ID or UUID."),
       },
-      annotations: {
-        readOnlyHint: true,
-        idempotentHint: true,
-      },
+      outputSchema: normalizedToolOutputSchema,
+      annotations: toolAnnotations("read"),
     },
-    async ({ id }) => jsonResult((await withTripIt((client) => client.getTrip(id))) as Record<string, unknown>),
+    async ({ id }) =>
+      toolResult("tripit_get_trip", async () =>
+        (await withTripIt((client) => client.getTrip(id))) as Record<string, unknown>,
+      ),
   );
 
   server.registerTool(
-    "tripit_trips_create",
+    "tripit_create_trip",
     {
-      title: "TripIt Trips Create",
-      description: "Create a new trip.",
+      title: "Create a TripIt trip",
+      description: "Create a new trip in the authenticated TripIt account.",
       inputSchema: {
         name: z.string().min(1).describe("Trip display name."),
         start: z.string().optional().describe("Start date in YYYY-MM-DD format. Defaults to today."),
         end: z.string().optional().describe("End date in YYYY-MM-DD format. Defaults to start date or today."),
         location: z.string().optional().describe("Primary location for the trip."),
       },
+      outputSchema: normalizedToolOutputSchema,
+      annotations: toolAnnotations("create"),
     },
     async ({ name, start, end, location }) => {
       const today = new Date().toISOString().slice(0, 10);
-      return jsonResult(
+      return toolResult("tripit_create_trip", async () =>
         (await withTripIt((client) =>
           client.createTrip({
             displayName: name,
@@ -63,16 +65,15 @@ export function registerTripTools(server: McpServer): void {
             endDate: end ?? start ?? today,
             primaryLocation: location,
           }),
-        )) as Record<string, unknown>,
-      );
+        )) as Record<string, unknown>);
     },
   );
 
   server.registerTool(
-    "tripit_trips_update",
+    "tripit_update_trip",
     {
-      title: "TripIt Trips Update",
-      description: "Update an existing trip.",
+      title: "Update a TripIt trip",
+      description: "Update an existing trip after confirming its identifier and current details with tripit_get_trip.",
       inputSchema: {
         id: z.string().min(1).describe("Trip ID or UUID."),
         name: z.string().optional().describe("New trip display name."),
@@ -81,9 +82,11 @@ export function registerTripTools(server: McpServer): void {
         location: z.string().optional().describe("Updated primary location."),
         description: z.string().optional().describe("Trip description."),
       },
+      outputSchema: normalizedToolOutputSchema,
+      annotations: toolAnnotations("update"),
     },
     async ({ id, name, start, end, location, description }) =>
-      jsonResult(
+      toolResult("tripit_update_trip", async () =>
         (await withTripIt((client) =>
           client.updateTrip({
             id,
@@ -98,17 +101,19 @@ export function registerTripTools(server: McpServer): void {
   );
 
   server.registerTool(
-    "tripit_trips_delete",
+    "tripit_delete_trip",
     {
-      title: "TripIt Trips Delete",
-      description: "Delete a trip by ID or UUID.",
+      title: "Delete a TripIt trip",
+      description: "Permanently delete a trip by numeric ID or UUID after confirming it with tripit_get_trip.",
       inputSchema: {
         id: z.string().min(1).describe("Trip ID or UUID."),
       },
-      annotations: {
-        destructiveHint: true,
-      },
+      outputSchema: normalizedToolOutputSchema,
+      annotations: toolAnnotations("delete"),
     },
-    async ({ id }) => jsonResult((await withTripIt((client) => client.deleteTrip(id))) as Record<string, unknown>),
+    async ({ id }) =>
+      toolResult("tripit_delete_trip", async () =>
+        (await withTripIt((client) => client.deleteTrip(id))) as Record<string, unknown>,
+      ),
   );
 }

@@ -89,3 +89,21 @@ Built on top of [`dvcrn/tripit-cli`](https://github.com/dvcrn/tripit-cli), this 
 - listing, fetching, creating, replacing, assigning, converting, and deleting unfiled travel items
 - converting raw unfiled items into typed air, activity, car, parking, cruise, directions, lodging, map, note, rail, restaurant, or transport objects
 - attaching and removing documents from supported TripIt objects
+
+## Tool contract
+
+Tool names are verb-first, for example `tripit_list_trips`, `tripit_get_trip`, and `tripit_create_lodging`.
+Every tool returns the same structured envelope:
+
+```json
+{
+  "ok": true,
+  "operation": "tripit_get_trip",
+  "data": {},
+  "warnings": []
+}
+```
+
+Failures set `isError: true` and return `ok: false` with a stable error code, message, retryability flag, and optional upstream HTTP status. Do not retry writes unless `error.retryable` is true. Conversion results with `partial_success` must be inspected before retrying to avoid duplicates.
+
+Create-without-trip, replacement, and conversion accept typed discriminated item schemas for air, activity, car, parking, cruise, directions, lodging, map, note, rail, restaurant, and transport. Weather remains read-only.

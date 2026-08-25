@@ -1,30 +1,32 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import * as z from "zod/v4";
 import { withTripIt } from "../client";
-import { jsonResult } from "../results";
+import { normalizedToolOutputSchema, toolResult } from "../results";
+import { toolAnnotations } from "./common";
 
 export function registerTransportTools(server: McpServer): void {
   server.registerTool(
-    "tripit_transport_get",
+    "tripit_get_transport",
     {
-      title: "TripIt Transport Get",
-      description: "Get a transport item by ID or UUID.",
+      title: "Get TripIt transport",
+      description: "Use this to inspect a transport item by numeric ID or UUID before updating or deleting it.",
       inputSchema: {
         id: z.string().min(1).describe("Transport ID or UUID."),
       },
-      annotations: {
-        readOnlyHint: true,
-        idempotentHint: true,
-      },
+      outputSchema: normalizedToolOutputSchema,
+      annotations: toolAnnotations("read"),
     },
-    async ({ id }) => jsonResult((await withTripIt((client) => client.getTransport(id))) as Record<string, unknown>),
+    async ({ id }) =>
+      toolResult("tripit_get_transport", async () =>
+        (await withTripIt((client) => client.getTransport(id))) as Record<string, unknown>,
+      ),
   );
 
   server.registerTool(
-    "tripit_transport_create",
+    "tripit_create_transport",
     {
-      title: "TripIt Transport Create",
-      description: "Add a transport segment to a trip.",
+      title: "Create TripIt transport",
+      description: "Create a structured transport segment directly in a specified TripIt trip.",
       inputSchema: {
         trip: z.string().min(1).describe("Trip UUID or Trip ID."),
         from: z.string().min(1).describe("Start address."),
@@ -41,9 +43,11 @@ export function registerTransportTools(server: McpServer): void {
         carrier: z.string().optional().describe("Carrier name."),
         confirmation: z.string().optional().describe("Confirmation number."),
       },
+      outputSchema: normalizedToolOutputSchema,
+      annotations: toolAnnotations("create"),
     },
     async (args) =>
-      jsonResult(
+      toolResult("tripit_create_transport", async () =>
         (await withTripIt((client) =>
           client.createTransport({
             tripId: args.trip,
@@ -66,10 +70,10 @@ export function registerTransportTools(server: McpServer): void {
   );
 
   server.registerTool(
-    "tripit_transport_update",
+    "tripit_update_transport",
     {
-      title: "TripIt Transport Update",
-      description: "Update an existing transport item.",
+      title: "Update TripIt transport",
+      description: "Update a transport item after confirming its identifier and current fields with tripit_get_transport.",
       inputSchema: {
         id: z.string().min(1).describe("Transport ID or UUID."),
         trip: z.string().optional().describe("Trip UUID or Trip ID."),
@@ -87,9 +91,11 @@ export function registerTransportTools(server: McpServer): void {
         carrier: z.string().optional().describe("Carrier name."),
         confirmation: z.string().optional().describe("Confirmation number."),
       },
+      outputSchema: normalizedToolOutputSchema,
+      annotations: toolAnnotations("update"),
     },
     async (args) =>
-      jsonResult(
+      toolResult("tripit_update_transport", async () =>
         (await withTripIt((client) =>
           client.updateTransport({
             id: args.id,
@@ -113,17 +119,19 @@ export function registerTransportTools(server: McpServer): void {
   );
 
   server.registerTool(
-    "tripit_transport_delete",
+    "tripit_delete_transport",
     {
-      title: "TripIt Transport Delete",
-      description: "Delete a transport item by ID or UUID.",
+      title: "Delete TripIt transport",
+      description: "Permanently delete a transport item after confirming it with tripit_get_transport.",
       inputSchema: {
         id: z.string().min(1).describe("Transport ID or UUID."),
       },
-      annotations: {
-        destructiveHint: true,
-      },
+      outputSchema: normalizedToolOutputSchema,
+      annotations: toolAnnotations("delete"),
     },
-    async ({ id }) => jsonResult((await withTripIt((client) => client.deleteTransport(id))) as Record<string, unknown>),
+    async ({ id }) =>
+      toolResult("tripit_delete_transport", async () =>
+        (await withTripIt((client) => client.deleteTransport(id))) as Record<string, unknown>,
+      ),
   );
 }

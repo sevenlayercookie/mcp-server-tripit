@@ -22,7 +22,9 @@
     "smoke": "bun run scripts/smoke-test.ts",
     "test:unfiled-assign": "bun run scripts/test-unfiled-assign.ts",
     "test:unfiled-convert": "bun run scripts/test-unfiled-convert.ts",
-    "test:unfiled-create": "bun run scripts/test-unfiled-create.ts"
+    "test:unfiled-create": "bun run scripts/test-unfiled-create.ts",
+    "test:conformance": "bun run build && bun run scripts/test-conformance.ts",
+    "test": "bun run test:unfiled-create && bun run test:unfiled-assign && bun run test:unfiled-convert && bun run test:conformance"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.18.1",

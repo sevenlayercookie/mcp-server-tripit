@@ -1,30 +1,32 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import * as z from "zod/v4";
 import { withTripIt } from "../client";
-import { jsonResult } from "../results";
+import { normalizedToolOutputSchema, toolResult } from "../results";
+import { toolAnnotations } from "./common";
 
 export function registerFlightTools(server: McpServer): void {
   server.registerTool(
-    "tripit_flights_get",
+    "tripit_get_flight",
     {
-      title: "TripIt Flights Get",
-      description: "Get a flight by ID or UUID.",
+      title: "Get a TripIt flight",
+      description: "Use this to inspect a flight by numeric ID or UUID before updating or deleting it.",
       inputSchema: {
         id: z.string().min(1).describe("Flight ID or UUID."),
       },
-      annotations: {
-        readOnlyHint: true,
-        idempotentHint: true,
-      },
+      outputSchema: normalizedToolOutputSchema,
+      annotations: toolAnnotations("read"),
     },
-    async ({ id }) => jsonResult((await withTripIt((client) => client.getFlight(id))) as Record<string, unknown>),
+    async ({ id }) =>
+      toolResult("tripit_get_flight", async () =>
+        (await withTripIt((client) => client.getFlight(id))) as Record<string, unknown>,
+      ),
   );
 
   server.registerTool(
-    "tripit_flights_create",
+    "tripit_create_flight",
     {
-      title: "TripIt Flights Create",
-      description: "Add a flight to a trip.",
+      title: "Create a TripIt flight",
+      description: "Create a structured flight directly in a specified TripIt trip.",
       inputSchema: {
         trip: z.string().min(1).describe("Trip UUID."),
         name: z.string().min(1).describe("Display name."),
@@ -47,9 +49,11 @@ export function registerFlightTools(server: McpServer): void {
         notes: z.string().optional().describe("Flight notes."),
         cost: z.string().optional().describe("Total cost."),
       },
+      outputSchema: normalizedToolOutputSchema,
+      annotations: toolAnnotations("create"),
     },
     async (args) =>
-      jsonResult(
+      toolResult("tripit_create_flight", async () =>
         (await withTripIt((client) =>
           client.createFlight({
             tripId: args.trip,
@@ -82,10 +86,10 @@ export function registerFlightTools(server: McpServer): void {
   );
 
   server.registerTool(
-    "tripit_flights_update",
+    "tripit_update_flight",
     {
-      title: "TripIt Flights Update",
-      description: "Update an existing flight.",
+      title: "Update a TripIt flight",
+      description: "Update a flight after confirming its identifier and current fields with tripit_get_flight.",
       inputSchema: {
         id: z.string().min(1).describe("Flight ID or UUID."),
         trip: z.string().optional().describe("Trip UUID."),
@@ -109,9 +113,11 @@ export function registerFlightTools(server: McpServer): void {
         notes: z.string().optional().describe("Flight notes."),
         cost: z.string().optional().describe("Total cost."),
       },
+      outputSchema: normalizedToolOutputSchema,
+      annotations: toolAnnotations("update"),
     },
     async (args) =>
-      jsonResult(
+      toolResult("tripit_update_flight", async () =>
         (await withTripIt((client) =>
           client.updateFlight({
             id: args.id,
@@ -143,17 +149,19 @@ export function registerFlightTools(server: McpServer): void {
   );
 
   server.registerTool(
-    "tripit_flights_delete",
+    "tripit_delete_flight",
     {
-      title: "TripIt Flights Delete",
-      description: "Delete a flight by ID or UUID.",
+      title: "Delete a TripIt flight",
+      description: "Permanently delete a flight after confirming it with tripit_get_flight.",
       inputSchema: {
         id: z.string().min(1).describe("Flight ID or UUID."),
       },
-      annotations: {
-        destructiveHint: true,
-      },
+      outputSchema: normalizedToolOutputSchema,
+      annotations: toolAnnotations("delete"),
     },
-    async ({ id }) => jsonResult((await withTripIt((client) => client.deleteFlight(id))) as Record<string, unknown>),
+    async ({ id }) =>
+      toolResult("tripit_delete_flight", async () =>
+        (await withTripIt((client) => client.deleteFlight(id))) as Record<string, unknown>,
+      ),
   );
 }

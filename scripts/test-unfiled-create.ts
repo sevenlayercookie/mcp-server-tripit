@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import type { TripItClient } from "../src/client";
-import { createUnfiledItem } from "../src/tools/unfiled";
+import { createItemWithoutTrip } from "../src/tools/unfiled";
 
 const posts: Array<{ url: string; body: Record<string, Record<string, unknown>> }> = [];
 const exportPayloads: Array<Record<string, Record<string, unknown>>> = [];
@@ -20,23 +20,34 @@ globalThis.fetch = (async (input, init = {}) => {
 try {
   const client = { getAccessToken: () => "test-token" } as TripItClient;
 
-  await createUnfiledItem(client, "car", {
-    car_type: "Chrysler Pacifica",
-    end_location_name: "YYC",
-    EndDateTime: { timezone: "America/Edmonton", time: "22:30:00", date: "2026-09-24" },
-    supplier_name: "Avis",
-    StartLocationAddress: { country: "CA", city: "Calgary", address: "Calgary International Airport" },
-    display_name: "Avis Chrysler Pacifica",
-    start_location_name: "YYC",
-    StartDateTime: { timezone: "America/Edmonton", time: "11:00:00", date: "2026-09-17" },
+  await createItemWithoutTrip(client, {
+    type: "car",
+    name: "Avis Chrysler Pacifica",
+    supplierName: "Avis",
+    pickupDate: "2026-09-17",
+    pickupTime: "11:00",
+    pickupTimezone: "America/Edmonton",
+    dropoffDate: "2026-09-24",
+    dropoffTime: "22:30",
+    dropoffTimezone: "America/Edmonton",
+    pickupAddress: "Calgary International Airport",
+    pickupCity: "Calgary",
+    pickupCountry: "CA",
+    pickupName: "YYC",
+    dropoffName: "YYC",
+    carType: "Chrysler Pacifica",
   });
 
-  await createUnfiledItem(client, "note", {
+  await createItemWithoutTrip(client, {
+    type: "note",
+    name: "Entry instructions",
+    date: "2026-09-23",
+    timezone: "America/Edmonton",
+    address: "71 Sandstone Drive NW",
+    city: "Calgary",
+    country: "CA",
     text: "Use the side entrance.",
     source: "Host",
-    Address: { country: "CA", city: "Calgary", address: "71 Sandstone Drive NW" },
-    DateTime: { timezone: "America/Edmonton", date: "2026-09-23" },
-    display_name: "Entry instructions",
   });
 
   assert.equal(posts.length, 2);
@@ -71,7 +82,7 @@ try {
 
   exportPayloads.push(...posts.map((post) => post.body));
 
-  console.log("Unfiled v1 create envelope and field-order tests passed.");
+  console.log("Typed create-without-trip envelope and field-order tests passed.");
 } finally {
   globalThis.fetch = originalFetch;
 }

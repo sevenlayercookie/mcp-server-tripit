@@ -43,12 +43,20 @@ This verifies end-to-end MCP transport, TripIt authentication, and a read-only A
 ```bash
 fnox x -- npx -y @modelcontextprotocol/inspector --cli bun run dist/index.js \
   --method tools/call \
-  --tool-name tripit_trips_list \
+  --tool-name tripit_list_trips \
   --tool-arg pageSize=1 \
   --tool-arg pageNum=1
 ```
 
 Expected result: the command returns a TripIt response with `page_size` set to `1` and trip/profile data for the authenticated account.
+
+### OpenAI MCP Conformance
+
+This validates verb-first tool names, server instructions, normalized output envelopes, typed inputs, output schemas, complete annotations, invalid-input handling, and the maintained prompt-selection matrix for every tool:
+
+```bash
+bun run test:conformance
+```
 
 ### Full Mutating Smoke Test
 
