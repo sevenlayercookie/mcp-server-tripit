@@ -205,8 +205,12 @@ try {
           to: "Calgary",
           toCountry: "CA",
           toAirport: "YYC",
+          marketingAirline: "Example Air",
           airlineCode: "EA",
           flightNumber: "123",
+          operatingAirline: "Example Regional",
+          operatingAirlineCode: "ER",
+          operatingFlightNumber: "456",
           seats: "12A",
         },
       ],
@@ -214,7 +218,13 @@ try {
     tripUuid,
   );
   assert.equal(flightPayload.trip_uuid, tripUuid);
-  assert.equal((flightPayload.Segment as Record<string, unknown>[])[0].start_airport_code, "ORD");
+  const flightSegment = (flightPayload.Segment as Record<string, unknown>[])[0];
+  assert.equal(flightSegment.start_airport_code, "ORD");
+  assert.equal(flightSegment.marketing_airline, "Example Air");
+  assert.equal(flightSegment.marketing_airline_code, "EA");
+  assert.equal(flightSegment.operating_airline, "Example Regional");
+  assert.equal(flightSegment.operating_airline_code, "ER");
+  assert.equal(flightSegment.operating_flight_number, "456");
   assert.equal((flightPayload.Traveler as Record<string, unknown>[])[0].last_name, "Traveler");
 
   const transportPayload = buildConversionItem(

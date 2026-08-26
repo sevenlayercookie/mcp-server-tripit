@@ -87,6 +87,7 @@ Built on top of [`dvcrn/tripit-cli`](https://github.com/dvcrn/tripit-cli), this 
 - managing transport segments
 - managing activities
 - creating any writable typed itinerary item directly in a trip
+- reading any TripIt plan object by type and numeric ID or UUID
 - listing, fetching, creating, replacing, assigning, converting, and deleting unfiled travel items
 - converting raw unfiled items into typed air, activity, car, parking, cruise, directions, lodging, map, note, rail, restaurant, or transport objects
 - attaching and removing documents from supported TripIt objects
@@ -110,5 +111,9 @@ Failures set `isError: true` and return `ok: false` with a stable error code, me
 Create-without-trip, replacement, and conversion accept typed discriminated item schemas for air, activity, car, parking, cruise, directions, lodging, map, note, rail, restaurant, and transport. Weather remains read-only.
 
 `tripit_create_trip_item` accepts a destination trip ID or UUID plus the same typed item schema. Direct, unfiled, and conversion creates use TripIt's typed v2 endpoints, preserve UUID trip associations, and verify the resulting association before reporting success.
+
+Car inputs support structured `pickupLocation`, `dropoffLocation`, and `vehicle` objects. Unknown car fields are rejected rather than silently removed, so a successful create preserves supplied airport/location names, addresses, vehicle descriptions, and vehicle classes.
+
+Air inputs preserve distinct marketing-airline names and codes, plus optional operating-carrier details for codeshares. Air, car, and lodging writes use strict typed inputs aligned with the documented v2 frontend models; response-only fields remain read-only.
 
 Run `bun run test:live` with the TripIt credentials loaded to exercise every registered tool through MCP. The test creates isolated temporary objects and a trip, removes them, and verifies that the trip no longer appears afterward.

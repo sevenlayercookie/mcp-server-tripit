@@ -115,6 +115,56 @@ function testTypedItemSchema(): void {
   assert.equal(writableItemSchema.safeParse({ type: "car", data: { car_type: "SUV" } }).success, false);
   assert.equal(
     writableItemSchema.safeParse({
+      type: "air",
+      name: "Example Air 123",
+      airline: "Example Air",
+      segments: [
+        {
+          departDate: "2026-09-17",
+          departTime: "08:00",
+          departTimezone: "America/Chicago",
+          arriveDate: "2026-09-17",
+          arriveTime: "10:30",
+          arriveTimezone: "America/Edmonton",
+          from: "Chicago",
+          to: "Calgary",
+          marketingAirline: "Example Air",
+          airlineCode: "EA",
+          flightNumber: "123",
+          operatingAirline: "Example Regional",
+          operatingAirlineCode: "ER",
+          operatingFlightNumber: "456",
+        },
+      ],
+    }).success,
+    true,
+  );
+  assert.equal(
+    writableItemSchema.safeParse({
+      type: "air",
+      name: "Example Air 123",
+      airline: "Example Air",
+      segments: [
+        {
+          departDate: "2026-09-17",
+          departTime: "08:00",
+          departTimezone: "America/Chicago",
+          arriveDate: "2026-09-17",
+          arriveTime: "10:30",
+          arriveTimezone: "America/Edmonton",
+          from: "Chicago",
+          to: "Calgary",
+          airlineCode: "EA",
+          flightNumber: "123",
+          aircraftDisplayName: "Example Jet",
+        },
+      ],
+    }).success,
+    false,
+    "Response-only air properties must be rejected instead of silently discarded.",
+  );
+  assert.equal(
+    writableItemSchema.safeParse({
       type: "car",
       name: "Airport rental",
       pickupDate: "2026-09-17",
@@ -123,9 +173,27 @@ function testTypedItemSchema(): void {
       dropoffDate: "2026-09-24",
       dropoffTime: "22:30",
       dropoffTimezone: "America/Edmonton",
-      carType: "SUV",
+      pickupLocation: { name: "YYC" },
+      dropoffLocation: { name: "YYC" },
+      vehicle: { description: "Chrysler Pacifica", type: "Minivan" },
     }).success,
     true,
+  );
+  assert.equal(
+    writableItemSchema.safeParse({
+      type: "car",
+      name: "Airport rental",
+      pickupDate: "2026-09-17",
+      pickupTime: "11:00",
+      pickupTimezone: "America/Edmonton",
+      dropoffDate: "2026-09-24",
+      dropoffTime: "22:30",
+      dropoffTimezone: "America/Edmonton",
+      pickup: { name: "YYC" },
+      vehicleDescription: "Chrysler Pacifica",
+    }).success,
+    false,
+    "Unknown car properties must be rejected instead of silently discarded.",
   );
 }
 

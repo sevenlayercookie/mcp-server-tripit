@@ -1,7 +1,12 @@
 node_modules
 bun.lock
 .env
-docs/
+docs/*
+!docs/tripit/
+docs/tripit/*
+!docs/tripit/v2/
+docs/tripit/v2/*
+!docs/tripit/v2/*.md
 .tmp
 cache
 dist

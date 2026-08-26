@@ -30,12 +30,14 @@ try {
     dropoffDate: "2026-09-24",
     dropoffTime: "22:30",
     dropoffTimezone: "America/Edmonton",
-    pickupAddress: "Calgary International Airport",
-    pickupCity: "Calgary",
-    pickupCountry: "CA",
-    pickupName: "YYC",
-    dropoffName: "YYC",
-    carType: "Chrysler Pacifica",
+    pickupLocation: {
+      name: "YYC",
+      address: "Calgary International Airport",
+      city: "Calgary",
+      country: "CA",
+    },
+    dropoffLocation: { name: "YYC" },
+    vehicle: { description: "Chrysler Pacifica", type: "Minivan" },
   });
 
   await createItemWithoutTrip(client, {
@@ -66,10 +68,10 @@ try {
       StartLocationAddress: { address: "Calgary International Airport", city: "Calgary", country: "CA" },
       start_location_name: "YYC",
       end_location_name: "YYC",
-      car_type: "Chrysler Pacifica",
+      car_description: "Chrysler Pacifica",
+      car_type: "Minivan",
     },
   });
-  assert.equal("car_description" in posts[0].body.CarObject, false);
 
   assert.deepEqual(posts[1].body, {
     NoteObject: {

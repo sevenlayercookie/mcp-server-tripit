@@ -4,7 +4,7 @@ import { tripItApiGet, tripItApiPost, withTripIt, type TripItClient } from "../c
 import { normalizedToolOutputSchema, toolResult } from "../results";
 import { toolAnnotations } from "./common";
 
-const objectTypes = [
+export const objectTypes = [
   "air",
   "activity",
   "car",
@@ -20,8 +20,8 @@ const objectTypes = [
   "weather",
 ] as const;
 
-const objectTypeSchema = z.enum(objectTypes);
-type TripItObjectType = (typeof objectTypes)[number];
+export const objectTypeSchema = z.enum(objectTypes);
+export type TripItObjectType = (typeof objectTypes)[number];
 type AssignableTripItObjectType = Exclude<TripItObjectType, "weather">;
 
 const assignableObjectTypeSchema = objectTypeSchema.exclude(["weather"]);
@@ -91,8 +91,28 @@ const optionalAddressShape = {
   country: z.string().optional().describe("ISO country code such as US or CA."),
 };
 
+const carLocationSchema = z.strictObject({
+  name: z.string().min(1).describe("Location name or airport code, such as YYC."),
+  address: z.string().optional().describe("Street address."),
+  city: z.string().optional().describe("City."),
+  state: z.string().optional().describe("State or province."),
+  zip: z.string().optional().describe("Postal code."),
+  country: z.string().optional().describe("ISO country code such as CA."),
+  hours: z.string().optional().describe("Location hours."),
+  phone: z.string().optional().describe("Location phone number."),
+});
+
+const carVehicleSchema = z
+  .strictObject({
+    description: z.string().min(1).optional().describe("Specific vehicle, such as Chrysler Pacifica."),
+    type: z.string().min(1).optional().describe("Vehicle class, such as minivan or SUV."),
+  })
+  .refine((vehicle) => vehicle.description !== undefined || vehicle.type !== undefined, {
+    message: "Provide vehicle.description, vehicle.type, or both.",
+  });
+
 export const writableItemSchema = z.discriminatedUnion("type", [
-  z.object({
+  z.strictObject({
     type: z.literal("lodging"),
     name: z.string().min(1).describe("Property, campground, or lodging name."),
     checkin: dateSchema.describe("Check-in date."),
@@ -120,7 +140,7 @@ export const writableItemSchema = z.discriminatedUnion("type", [
     ...reservationDetailsShape,
     participants: z.array(personSchema).optional().describe("Named participants."),
   }),
-  z.object({
+  z.strictObject({
     type: z.literal("car"),
     name: z.string().min(1).describe("Car reservation title."),
     pickupDate: dateSchema.describe("Pickup date."),
@@ -129,6 +149,9 @@ export const writableItemSchema = z.discriminatedUnion("type", [
     dropoffDate: dateSchema.describe("Drop-off date."),
     dropoffTime: timeSchema.describe("Drop-off time."),
     dropoffTimezone: z.string().min(1).describe("Drop-off IANA timezone."),
+    pickupLocation: carLocationSchema.optional().describe("Structured pickup location."),
+    dropoffLocation: carLocationSchema.optional().describe("Structured drop-off location."),
+    vehicle: carVehicleSchema.optional().describe("Structured vehicle description and class."),
     pickupAddress: z.string().optional().describe("Pickup address."),
     pickupCity: z.string().optional().describe("Pickup city."),
     pickupState: z.string().optional().describe("Pickup state or province."),
@@ -147,6 +170,7 @@ export const writableItemSchema = z.discriminatedUnion("type", [
     dropoffPhone: z.string().optional().describe("Drop-off location phone."),
     reservationHolder: personSchema.optional().describe("Reservation holder."),
     drivers: z.array(personSchema).optional().describe("Named drivers."),
+    carDescription: z.string().optional().describe("Specific vehicle description."),
     carType: z.string().optional().describe("Vehicle class or type."),
     mileageCharges: z.string().optional().describe("Mileage allowance or charges."),
     ...reservationDetailsShape,
@@ -280,18 +304,15 @@ export const writableItemSchema = z.discriminatedUnion("type", [
     priceRange: z.string().optional().describe("Price range."),
     ...reservationDetailsShape,
   }),
-  z.object({
+  z.strictObject({
     type: z.literal("air"),
     name: z.string().min(1).describe("Flight reservation title."),
-    airline: z.string().min(1).describe("Airline or supplier name."),
-    confirmation: z.string().optional().describe("Airline confirmation number."),
-    cost: z.string().optional().describe("Total cost, including currency when known."),
-    notes: z.string().optional().describe("Flight notes."),
-    purchased: z.boolean().optional().describe("Whether the flight was purchased."),
+    airline: z.string().min(1).describe("Airline or reservation supplier name."),
+    ...reservationDetailsShape,
     travelers: z.array(personSchema).optional().describe("Named travelers."),
     segments: z
       .array(
-        z.object({
+        z.strictObject({
           departDate: dateSchema.describe("Departure date."),
           departTime: timeSchema.describe("Departure time."),
           departTimezone: z.string().min(1).describe("Departure IANA timezone."),
@@ -304,11 +325,20 @@ export const writableItemSchema = z.discriminatedUnion("type", [
           to: z.string().min(1).describe("Arrival city."),
           toCountry: z.string().optional().describe("Arrival country code."),
           toAirport: z.string().optional().describe("Arrival airport code."),
+          marketingAirline: z.string().optional().describe("Marketing airline name. Defaults to the reservation airline."),
           airlineCode: z.string().min(1).describe("Marketing airline code."),
           flightNumber: z.string().min(1).describe("Marketing flight number."),
+          operatingAirline: z.string().optional().describe("Operating airline name for a codeshare flight."),
+          operatingAirlineCode: z.string().optional().describe("Operating airline code for a codeshare flight."),
+          operatingFlightNumber: z.string().optional().describe("Operating flight number for a codeshare flight."),
           aircraft: z.string().optional().describe("Aircraft type."),
           serviceClass: z.string().optional().describe("Service class."),
           seats: z.string().optional().describe("Seat assignment."),
+          entertainment: z.string().optional().describe("In-flight entertainment details."),
+          meal: z.string().optional().describe("Meal details."),
+          notes: z.string().optional().describe("Flight-segment notes."),
+          baggageClaim: z.string().optional().describe("Baggage-claim details."),
+          checkInUrl: z.string().optional().describe("Airline check-in URL."),
         }),
       )
       .min(1)
@@ -367,6 +397,14 @@ function identifierEndpoint(
   return isUuid(id)
     ? apiEndpoint("v2", `${action}/${type}/uuid/${encodeURIComponent(id)}`)
     : apiEndpoint("v1", `${action}/${type}/id/${encodeURIComponent(id)}`);
+}
+
+export function getTripItem(
+  client: TripItClient,
+  type: TripItObjectType,
+  id: string,
+): Promise<Record<string, unknown>> {
+  return tripItApiGet<Record<string, unknown>>(client, identifierEndpoint("get", type, id));
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -543,8 +581,10 @@ const segmentFields: Record<"air" | "cruise" | "rail" | "transport", readonly st
     "end_gate",
     "end_terminal",
     "marketing_airline",
+    "marketing_airline_code",
     "marketing_flight_number",
     "operating_airline",
+    "operating_airline_code",
     "operating_flight_number",
     "aircraft",
     "distance",
@@ -1081,19 +1121,21 @@ export function buildConversionItem(target: WritableItemInput, trip?: string): R
   }
 
   if (target.type === "car") {
+    const pickupLocation = target.pickupLocation;
+    const dropoffLocation = target.dropoffLocation;
     const pickupAddress = conversionAddress({
-      address: target.pickupAddress,
-      city: target.pickupCity,
-      state: target.pickupState,
-      zip: target.pickupZip,
-      country: target.pickupCountry,
+      address: pickupLocation?.address ?? target.pickupAddress,
+      city: pickupLocation?.city ?? target.pickupCity,
+      state: pickupLocation?.state ?? target.pickupState,
+      zip: pickupLocation?.zip ?? target.pickupZip,
+      country: pickupLocation?.country ?? target.pickupCountry,
     });
     const dropoffAddress = conversionAddress({
-      address: target.dropoffAddress,
-      city: target.dropoffCity,
-      state: target.dropoffState,
-      zip: target.dropoffZip,
-      country: target.dropoffCountry,
+      address: dropoffLocation?.address ?? target.dropoffAddress,
+      city: dropoffLocation?.city ?? target.dropoffCity,
+      state: dropoffLocation?.state ?? target.dropoffState,
+      zip: dropoffLocation?.zip ?? target.dropoffZip,
+      country: dropoffLocation?.country ?? target.dropoffCountry,
     });
     return compactRecord({
       ...association,
@@ -1105,13 +1147,14 @@ export function buildConversionItem(target: WritableItemInput, trip?: string): R
       EndLocationAddress: Object.keys(dropoffAddress).length > 0 ? dropoffAddress : undefined,
       ReservationHolder: conversionPerson(target.reservationHolder),
       Driver: conversionPeople(target.drivers),
-      start_location_hours: target.pickupHours,
-      start_location_name: target.pickupName,
-      start_location_phone: target.pickupPhone,
-      end_location_hours: target.dropoffHours,
-      end_location_name: target.dropoffName,
-      end_location_phone: target.dropoffPhone,
-      car_type: target.carType,
+      start_location_hours: pickupLocation?.hours ?? target.pickupHours,
+      start_location_name: pickupLocation?.name ?? target.pickupName,
+      start_location_phone: pickupLocation?.phone ?? target.pickupPhone,
+      end_location_hours: dropoffLocation?.hours ?? target.dropoffHours,
+      end_location_name: dropoffLocation?.name ?? target.dropoffName,
+      end_location_phone: dropoffLocation?.phone ?? target.dropoffPhone,
+      car_description: target.vehicle?.description ?? target.carDescription,
+      car_type: target.vehicle?.type ?? target.carType,
       mileage_charges: target.mileageCharges,
     });
   }
@@ -1249,11 +1292,7 @@ export function buildConversionItem(target: WritableItemInput, trip?: string): R
     return compactRecord({
       ...association,
       display_name: target.name,
-      supplier_conf_num: target.confirmation,
-      supplier_name: target.airline,
-      is_purchased: target.purchased,
-      notes: target.notes,
-      total_cost: target.cost,
+      ...conversionReservationFields({ ...target, supplierName: target.supplierName ?? target.airline }),
       Segment: target.segments.map((segment) =>
         compactRecord({
           StartDateTime: conversionDateTime(segment.departDate, segment.departTime, segment.departTimezone),
@@ -1264,11 +1303,20 @@ export function buildConversionItem(target: WritableItemInput, trip?: string): R
           end_airport_code: segment.toAirport,
           end_city_name: segment.to,
           end_country_code: segment.toCountry,
-          marketing_airline: segment.airlineCode,
+          marketing_airline: segment.marketingAirline ?? target.airline,
+          marketing_airline_code: segment.airlineCode,
           marketing_flight_number: segment.flightNumber,
+          operating_airline: segment.operatingAirline,
+          operating_airline_code: segment.operatingAirlineCode,
+          operating_flight_number: segment.operatingFlightNumber,
           aircraft: segment.aircraft,
           seats: segment.seats,
           service_class: segment.serviceClass,
+          entertainment: segment.entertainment,
+          meal: segment.meal,
+          notes: segment.notes,
+          baggage_claim: segment.baggageClaim,
+          check_in_url: segment.checkInUrl,
         }),
       ),
       Traveler: conversionPeople(target.travelers),

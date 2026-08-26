@@ -3,6 +3,7 @@ import * as z from "zod/v4";
 import { withTripIt } from "../client";
 import { normalizedToolOutputSchema, toolResult } from "../results";
 import { toolAnnotations } from "./common";
+import { createTripItem } from "./unfiled";
 
 export function registerFlightTools(server: McpServer): void {
   server.registerTool(
@@ -26,17 +27,23 @@ export function registerFlightTools(server: McpServer): void {
     "tripit_create_flight",
     {
       title: "Create a TripIt flight",
-      description: "Create a structured flight directly in a specified TripIt trip.",
+      description:
+        "Create a structured flight directly in a specified TripIt trip using the documented v2 AirObject model.",
       inputSchema: {
-        trip: z.string().min(1).describe("Trip UUID."),
+        trip: z.string().min(1).describe("Trip numeric ID or UUID."),
         name: z.string().min(1).describe("Display name."),
         airline: z.string().min(1).describe("Airline name."),
         from: z.string().min(1).describe("Departure city."),
         fromCode: z.string().min(1).describe("Departure country code."),
+        fromAirport: z.string().optional().describe("Departure airport code."),
         to: z.string().min(1).describe("Arrival city."),
         toCode: z.string().min(1).describe("Arrival country code."),
+        toAirport: z.string().optional().describe("Arrival airport code."),
         airlineCode: z.string().min(1).describe("Airline code such as NH or JL."),
         flightNum: z.string().min(1).describe("Flight number."),
+        operatingAirline: z.string().optional().describe("Operating airline name for a codeshare flight."),
+        operatingAirlineCode: z.string().optional().describe("Operating airline code for a codeshare flight."),
+        operatingFlightNum: z.string().optional().describe("Operating flight number for a codeshare flight."),
         departDate: z.string().min(1).describe("Departure date in YYYY-MM-DD format."),
         departTime: z.string().min(1).describe("Departure time in HH:MM format."),
         departTz: z.string().min(1).describe("Departure timezone."),
@@ -54,34 +61,51 @@ export function registerFlightTools(server: McpServer): void {
     },
     async (args) =>
       toolResult("tripit_create_flight", async () =>
-        (await withTripIt((client) =>
-          client.createFlight({
-            tripId: args.trip,
-            displayName: args.name,
-            supplierName: args.airline,
-            supplierConfNum: args.confirmation,
+        withTripIt(async (client) => {
+          const result = await createTripItem(client, args.trip, {
+            type: "air",
+            name: args.name,
+            airline: args.airline,
+            confirmation: args.confirmation,
             notes: args.notes,
-            totalCost: args.cost,
+            cost: args.cost,
             segments: [
               {
-                startDate: args.departDate,
-                startTime: args.departTime,
-                startTimezone: args.departTz,
-                endDate: args.arriveDate,
-                endTime: args.arriveTime,
-                endTimezone: args.arriveTz,
-                startCityName: args.from,
-                startCountryCode: args.fromCode,
-                endCityName: args.to,
-                endCountryCode: args.toCode,
-                marketingAirline: args.airlineCode,
-                marketingFlightNumber: args.flightNum,
+                departDate: args.departDate,
+                departTime: args.departTime,
+                departTimezone: args.departTz,
+                arriveDate: args.arriveDate,
+                arriveTime: args.arriveTime,
+                arriveTimezone: args.arriveTz,
+                from: args.from,
+                fromCountry: args.fromCode,
+                fromAirport: args.fromAirport,
+                to: args.to,
+                toCountry: args.toCode,
+                toAirport: args.toAirport,
+                marketingAirline: args.airline,
+                airlineCode: args.airlineCode,
+                flightNumber: args.flightNum,
+                operatingAirline: args.operatingAirline,
+                operatingAirlineCode: args.operatingAirlineCode,
+                operatingFlightNumber: args.operatingFlightNum,
                 aircraft: args.aircraft,
                 serviceClass: args.serviceClass,
               },
             ],
-          }),
-        )) as Record<string, unknown>,
+          });
+          const created = result.created;
+          const object =
+            typeof created === "object" && created !== null && !Array.isArray(created)
+              ? (created as Record<string, unknown>).object
+              : undefined;
+
+          // Keep the dedicated tool's historical AirObject response while also
+          // returning the generic create/verification metadata.
+          return object && typeof object === "object" && !Array.isArray(object)
+            ? { ...result, AirObject: object }
+            : result;
+        }),
       ),
   );
 

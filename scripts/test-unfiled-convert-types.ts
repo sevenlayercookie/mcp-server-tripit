@@ -13,16 +13,20 @@ const car = buildConversionItem(
     dropoffDate: "2026-09-24",
     dropoffTime: "09:00",
     dropoffTimezone: "America/Edmonton",
-    pickupAddress: "2000 Airport Road NE",
-    pickupCity: "Calgary",
-    pickupState: "AB",
-    pickupCountry: "CA",
-    pickupName: "YYC Rental Car Centre",
-    dropoffAddress: "2000 Airport Road NE",
-    dropoffCity: "Calgary",
-    dropoffState: "AB",
-    dropoffCountry: "CA",
-    dropoffName: "YYC Rental Car Centre",
+    pickupLocation: {
+      name: "YYC Rental Car Centre",
+      address: "2000 Airport Road NE",
+      city: "Calgary",
+      state: "AB",
+      country: "CA",
+    },
+    dropoffLocation: {
+      name: "YYC Rental Car Centre",
+      address: "2000 Airport Road NE",
+      city: "Calgary",
+      state: "AB",
+      country: "CA",
+    },
     bookingDate: "2026-08-24",
     bookingRate: "CAD 75.00 per day",
     bookingConfirmation: "BOOK123",
@@ -51,7 +55,7 @@ const car = buildConversionItem(
         frequentTravelerSupplier: "Example Car Rental",
       },
     ],
-    carType: "SUV",
+    vehicle: { description: "Chrysler Pacifica", type: "Minivan" },
     mileageCharges: "Unlimited kilometres",
   },
   trip,
@@ -86,9 +90,12 @@ assert.deepEqual(Object.keys(car), [
   "Driver",
   "start_location_name",
   "end_location_name",
+  "car_description",
   "car_type",
   "mileage_charges",
 ]);
+assert.equal(car.car_description, "Chrysler Pacifica");
+assert.equal(car.car_type, "Minivan");
 
 const parking = buildConversionItem(
   {

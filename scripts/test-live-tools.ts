@@ -245,19 +245,36 @@ async function main(): Promise<void> {
         dropoffDate: endDate,
         dropoffTime: "12:00",
         dropoffTimezone: "UTC",
-        pickupAddress: "4 Rental Way",
-        pickupCity: "Test City",
-        pickupCountry: "US",
-        pickupName: "Test Rental Counter",
-        dropoffAddress: "4 Rental Way",
-        dropoffCity: "Test City",
-        dropoffCountry: "US",
-        dropoffName: "Test Rental Counter",
+        pickupLocation: {
+          name: "Test Rental Counter",
+          address: "4 Rental Way",
+          city: "Test City",
+          country: "US",
+        },
+        dropoffLocation: {
+          name: "Test Rental Counter",
+          address: "4 Rental Way",
+          city: "Test City",
+          country: "US",
+        },
+        vehicle: { description: "Test Vehicle", type: "Test Class" },
         supplierName: "Test Rental",
-        carType: "Test Vehicle",
       },
     });
     assert.equal(direct.created?.type, "car");
+    const directCarId = String(direct.created?.uuid ?? direct.created?.id ?? "");
+    assert.ok(directCarId, "Direct car creation must return an identifier.");
+    const tripWithCar = await callTool(client, "tripit_get_trip", { id: created.trip });
+    const persistedCar = asArray<Record<string, any>>(tripWithCar.CarObject).find(
+      (car) => String(car.uuid ?? car.id) === directCarId,
+    );
+    assert.ok(persistedCar, "The direct car must be present in the destination trip.");
+    assert.equal(persistedCar.start_location_name, "Test Rental Counter");
+    assert.equal(persistedCar.end_location_name, "Test Rental Counter");
+    assert.equal(persistedCar.car_description, "Test Vehicle");
+    assert.equal(persistedCar.car_type, "Test Class");
+    assert.equal(persistedCar.StartLocationAddress?.address, "4 Rental Way");
+    assert.equal(persistedCar.EndLocationAddress?.address, "4 Rental Way");
 
     await callTool(client, "tripit_list_unfiled_items", { type: "note", pageSize: 100, pageNum: 1 });
 

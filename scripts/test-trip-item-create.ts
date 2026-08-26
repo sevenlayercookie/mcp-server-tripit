@@ -35,7 +35,8 @@ const items: WritableItemInput[] = [
     type: "car", name: "Avis Chrysler Pacifica",
     pickupDate: "2026-09-17", pickupTime: "11:00", pickupTimezone: "America/Edmonton",
     dropoffDate: "2026-09-24", dropoffTime: "22:30", dropoffTimezone: "America/Edmonton",
-    carType: "Chrysler Pacifica",
+    pickupLocation: { name: "YYC" }, dropoffLocation: { name: "YYC" },
+    vehicle: { description: "Chrysler Pacifica", type: "Minivan" },
   },
   {
     type: "cruise", name: "Harbour cruise",
@@ -142,6 +143,12 @@ try {
 
   assert.equal(posts.length, 12);
   assert.deepEqual(new Set(posts.map((post) => post.key)), new Set(Object.values(objectKeys)));
+  const airObject = posts.find((post) => post.key === "AirObject")?.object;
+  const airSegment = (airObject?.Segment as Record<string, unknown>[] | undefined)?.[0];
+  assert.equal(airObject?.supplier_name, "Air Canada");
+  assert.equal(airSegment?.marketing_airline, "Air Canada");
+  assert.equal(airSegment?.marketing_airline_code, "AC");
+  assert.equal(airSegment?.marketing_flight_number, "123");
   for (const post of posts) {
     assert.equal(post.object.trip_id, tripId);
     assert.equal("trip_uuid" in post.object, false);
